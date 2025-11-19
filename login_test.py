@@ -25,6 +25,7 @@ print("📱 Connecting to Chrome...")
 options = Options()
 
 # Check if Chrome debug service is available
+driver = None
 try:
     import urllib.request
     urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
@@ -32,16 +33,32 @@ try:
     options.add_experimental_option("debuggerAddress", "localhost:9222")
     driver = webdriver.Chrome(options=options)
     print("✅ Connected to existing Chrome\n")
-except:
-    # Launch new Chrome (visible, not headless)
-    print("   Launching new Chrome (visible window)...")
-    # Remove headless for local testing - Chrome will open visibly
-    # options.add_argument('--headless=new')  # Commented out for visible Chrome
+except Exception as e:
+    # Launch new Chrome (headless for server)
+    print("   Chrome debug service not available, launching new Chrome...")
+    # Use headless mode (required for VPS/server)
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    driver = webdriver.Chrome(options=options)
-    print("✅ Chrome launched (visible window)\n")
+    options.add_argument('--disable-software-rasterizer')
+    options.add_argument('--disable-setuid-sandbox')
+    
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("✅ Chrome launched (headless mode)\n")
+    except Exception as chrome_error:
+        print(f"❌ Failed to launch Chrome: {chrome_error}")
+        print("\n💡 Solutions:")
+        print("   1. Start Chrome debug service: systemctl start chrome-debug")
+        print("   2. Wait 5 seconds, then run script again")
+        print("   3. Or use: npm run login")
+        exit(1)
+
+if not driver:
+    print("❌ Failed to get Chrome driver")
+    exit(1)
 
 try:
     # Navigate

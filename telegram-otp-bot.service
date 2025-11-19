@@ -1,0 +1,29 @@
+[Unit]
+Description=Telegram OTP Bot Service
+After=network.target chrome-debug.service
+Wants=chrome-debug.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/teleram-otp-bot
+Environment="NODE_ENV=production"
+Environment="PORT=8810"
+Environment="USE_WEBHOOK=false"
+ExecStart=/usr/bin/node telegramNumberBot.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telegram-otp-bot
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

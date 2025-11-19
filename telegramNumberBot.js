@@ -1803,8 +1803,12 @@ async function startScraper() {
           '--disable-gpu',
           '--disable-software-rasterizer',
           '--disable-extensions',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
         ],
         defaultViewport: { width: 1920, height: 1080 },
+        ignoreHTTPSErrors: true,
       });
     }
 
@@ -1830,52 +1834,257 @@ async function startScraper() {
       console.log("Opening new page...");
       targetPage = await browser.newPage();
       
+      // Set user agent to avoid detection
+      await targetPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      // Disable request blocking
+      await targetPage.setRequestInterception(false);
+      
       // If not using external Chrome, we need to login
       if (!USE_EXTERNAL_CHROME) {
         console.log("Logging into SMS portal...");
-        await targetPage.goto(loginUrl, {
-          waitUntil: "networkidle2",
-          timeout: 30000,
-        });
         
-        // Wait for login form and fill credentials
         try {
-          await targetPage.waitForSelector('input[type="text"], input[name="username"], input[name="user"]', { timeout: 10000 });
-          await targetPage.type('input[type="text"], input[name="username"], input[name="user"]', SMS_USERNAME);
-          
-          await targetPage.waitForSelector('input[type="password"]', { timeout: 10000 });
-          await targetPage.type('input[type="password"]', SMS_PASSWORD);
-          
-          // Click login button - try multiple selectors
-          try {
-            await targetPage.click('button[type="submit"]');
-          } catch {
+          // Navigate to login page with retry
+          let loginSuccess = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              await targetPage.click('input[type="submit"]');
-            } catch {
-              // Try to find button with text "Login"
-              await targetPage.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const loginBtn = buttons.find(btn => btn.textContent.toLowerCase().includes('login'));
-                if (loginBtn) loginBtn.click();
+              console.log(`Login attempt ${attempt}/3...`);
+              await targetPage.goto(loginUrl, {
+                waitUntil: "domcontentloaded",
+                timeout: 30000,
               });
+              
+              // Wait a bit for page to fully load
+              await targetPage.waitForTimeout(2000);
+              
+              // Solve math CAPTCHA if present
+              const mathAnswer = await targetPage.evaluate(() => {
+                // Look for math question text like "What is 10 + 5 = ?"
+                const text = document.body.innerText || document.body.textContent || '';
+                const mathMatch = text.match(/What is (\d+)\s*\+\s*(\d+)\s*=\s*\?/i);
+                if (mathMatch) {
+                  const num1 = parseInt(mathMatch[1]);
+                  const num2 = parseInt(mathMatch[2]);
+                  const answer = num1 + num2;
+                  console.log(`Math CAPTCHA: ${num1} + ${num2} = ${answer}`);
+                  return answer;
+                }
+                return null;
+              });
+              
+              if (mathAnswer !== null) {
+                console.log(`Solving math CAPTCHA: Answer is ${mathAnswer}`);
+                
+                // Find and fill the answer field
+                const answerFilled = await targetPage.evaluate((answer) => {
+                  // Method 1: Find input by looking for text containing "What is" and finding nearby input
+                  const allText = document.body.innerText || '';
+                  const mathIndex = allText.indexOf('What is');
+                  
+                  if (mathIndex !== -1) {
+                    // Find all text nodes and inputs
+                    const walker = document.createTreeWalker(
+                      document.body,
+                      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+                      null
+                    );
+                    
+                    let node;
+                    let foundMathText = false;
+                    while (node = walker.nextNode()) {
+                      if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('What is')) {
+                        foundMathText = true;
+                        // Look for input near this text
+                        let parent = node.parentElement;
+                        for (let i = 0; i < 5; i++) {
+                          if (!parent) break;
+                          const input = parent.querySelector('input[type="text"], input[type="number"], input:not([type="password"])');
+                          if (input) {
+                            input.value = answer;
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            return true;
+                          }
+                          parent = parent.parentElement;
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Method 2: Find all inputs and check which one is near the math question
+                  const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="number"], input:not([type="password"]):not([type="submit"])'));
+                  for (const input of inputs) {
+                    const form = input.closest('form');
+                    if (form) {
+                      const formText = form.textContent || '';
+                      if (formText.includes('What is') && formText.includes('Answer')) {
+                        input.value = answer;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                        return true;
+                      }
+                    }
+                  }
+                  
+                  // Method 3: If there are multiple text inputs, the answer is usually the one after "What is"
+                  // Find the input that comes after text containing "What is"
+                  const textNodes = [];
+                  const walker2 = document.createTreeWalker(
+                    document.body,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                  );
+                  
+                  while (node = walker2.nextNode()) {
+                    if (node.textContent.trim().includes('What is')) {
+                      // Find next input sibling
+                      let next = node.parentElement;
+                      while (next) {
+                        const input = next.querySelector('input[type="text"], input[type="number"]');
+                        if (input) {
+                          input.value = answer;
+                          input.dispatchEvent(new Event('input', { bubbles: true }));
+                          input.dispatchEvent(new Event('change', { bubbles: true }));
+                          return true;
+                        }
+                        next = next.nextElementSibling;
+                      }
+                    }
+                  }
+                  
+                  // Method 4: Last resort - try the last text input (often the answer field)
+                  if (inputs.length > 0) {
+                    const lastInput = inputs[inputs.length - 1];
+                    lastInput.value = answer;
+                    lastInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    lastInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                  }
+                  
+                  return false;
+                }, mathAnswer);
+                
+                if (answerFilled) {
+                  console.log(`✅ Math CAPTCHA answer filled: ${mathAnswer}`);
+                  await targetPage.waitForTimeout(500); // Wait a bit after filling
+                } else {
+                  console.log(`⚠️ Could not find answer field, but answer is: ${mathAnswer}`);
+                }
+              }
+              
+              // Wait for login form and fill credentials
+              const usernameSelector = await targetPage.evaluate(() => {
+                // Try to find username field (exclude the answer field)
+                const selectors = [
+                  'input[name="username"]',
+                  'input[name="user"]',
+                  'input[name="email"]',
+                  'input[id*="user"]',
+                  'input[id*="login"]',
+                  'input[type="text"]',
+                ];
+                for (const sel of selectors) {
+                  const els = Array.from(document.querySelectorAll(sel));
+                  for (const el of els) {
+                    // Skip if it's likely the answer field
+                    const label = el.closest('form')?.textContent || '';
+                    if (!label.includes('Answer') && el.offsetParent !== null) {
+                      return sel + (els.indexOf(el) > 0 ? `:nth-of-type(${els.indexOf(el) + 1})` : '');
+                    }
+                  }
+                }
+                return null;
+              });
+              
+              if (!usernameSelector) {
+                throw new Error("Username field not found");
+              }
+              
+              await targetPage.waitForSelector(usernameSelector, { timeout: 10000 });
+              await targetPage.type(usernameSelector, SMS_USERNAME, { delay: 100 });
+              
+              await targetPage.waitForSelector('input[type="password"]', { timeout: 10000 });
+              await targetPage.type('input[type="password"]', SMS_PASSWORD, { delay: 100 });
+              
+              // Click login button - try multiple selectors
+              const loginClicked = await targetPage.evaluate(() => {
+                // Try different button selectors
+                const selectors = [
+                  'button[type="submit"]',
+                  'input[type="submit"]',
+                  'button.btn-primary',
+                  'button.btn',
+                  'input.btn',
+                ];
+                
+                for (const sel of selectors) {
+                  const btn = document.querySelector(sel);
+                  if (btn && btn.offsetParent !== null) {
+                    btn.click();
+                    return true;
+                  }
+                }
+                
+                // Try to find button with text "Login"
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+                const loginBtn = buttons.find(btn => 
+                  btn.textContent && btn.textContent.toLowerCase().includes('login')
+                );
+                if (loginBtn) {
+                  loginBtn.click();
+                  return true;
+                }
+                
+                return false;
+              });
+              
+              if (!loginClicked) {
+                // Try pressing Enter
+                await targetPage.keyboard.press('Enter');
+              }
+              
+              // Wait for navigation
+              await Promise.race([
+                targetPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }),
+                targetPage.waitForTimeout(5000)
+              ]);
+              
+              // Check if we're logged in (not on login page anymore)
+              const currentUrl = targetPage.url();
+              if (!currentUrl.includes('/login') && !currentUrl.includes('/ints/login')) {
+                console.log("✅ Login successful!");
+                loginSuccess = true;
+                break;
+              } else {
+                console.log(`Login attempt ${attempt} failed - still on login page`);
+              }
+            } catch (attemptError) {
+              console.log(`Login attempt ${attempt} error:`, attemptError.message);
+              if (attempt < 3) {
+                await targetPage.waitForTimeout(2000);
+              }
             }
           }
-          await targetPage.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 });
           
-          console.log("Login successful!");
+          if (!loginSuccess) {
+            throw new Error("All login attempts failed");
+          }
         } catch (loginError) {
-          console.error("Login error:", loginError.message);
-          console.log("⚠️ Auto-login failed. You may need to login manually or check credentials.");
+          console.error("❌ Login error:", loginError.message);
+          console.log("⚠️ Auto-login failed. Check credentials or login page structure.");
+          throw loginError;
         }
       }
       
       // Navigate to SMS stats page
+      console.log("Navigating to SMS stats page...");
       await targetPage.goto(targetUrl, {
-        waitUntil: "networkidle2",
+        waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      console.log("Navigated to SMS stats page");
+      await targetPage.waitForTimeout(2000); // Wait for page to load
+      console.log("✅ Navigated to SMS stats page");
     }
 
     let uniqueRows = new Set();

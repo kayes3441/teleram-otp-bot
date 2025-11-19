@@ -1967,11 +1967,35 @@ async function startScraper() {
               }
               
               if (!navigationSuccess) {
-                throw new Error("Failed to navigate to login page with all strategies and URLs");
+                // Even if navigation "failed", check if page loaded
+                const currentUrl = targetPage.url();
+                const pageTitle = await targetPage.title().catch(() => 'Unknown');
+                console.log(`Current page URL: ${currentUrl}`);
+                console.log(`Current page title: ${pageTitle}`);
+                
+                // Check if we're actually on the login page despite the error
+                if (currentUrl.includes('/login') || currentUrl.includes('/ints/login')) {
+                  console.log("⚠️ Navigation reported error but we're on login page - continuing...");
+                  navigationSuccess = true;
+                } else {
+                  throw new Error("Failed to navigate to login page with all strategies and URLs");
+                }
               }
               
               // Wait a bit for page to fully load
               await delay(2000);
+              
+              // Debug: Check what's actually on the page
+              const pageContent = await targetPage.evaluate(() => {
+                return {
+                  url: window.location.href,
+                  title: document.title,
+                  bodyText: document.body.innerText.substring(0, 500),
+                  hasForm: !!document.querySelector('form'),
+                  inputCount: document.querySelectorAll('input').length,
+                };
+              });
+              console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
               
               // Solve math CAPTCHA if present
               const mathAnswer = await targetPage.evaluate(() => {
@@ -2187,6 +2211,30 @@ async function startScraper() {
           }
         } catch (loginError) {
           console.error("❌ Login error:", loginError.message);
+          console.error("Login error stack:", loginError.stack);
+          
+          // Try to get page state for debugging
+          try {
+            const debugInfo = await targetPage.evaluate(() => {
+              return {
+                url: window.location.href,
+                title: document.title,
+                bodyText: document.body.innerText.substring(0, 1000),
+                hasForm: !!document.querySelector('form'),
+                formAction: document.querySelector('form')?.action || 'none',
+                inputFields: Array.from(document.querySelectorAll('input')).map(inp => ({
+                  type: inp.type,
+                  name: inp.name,
+                  id: inp.id,
+                  placeholder: inp.placeholder,
+                })),
+              };
+            });
+            console.log("Page state at error:", JSON.stringify(debugInfo, null, 2));
+          } catch (debugError) {
+            console.log("Could not get debug info:", debugError.message);
+          }
+          
           console.log("⚠️ Auto-login failed. Check credentials or login page structure.");
           throw loginError;
         }

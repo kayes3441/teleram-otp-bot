@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Python Login Script
-Usage: source venv/bin/activate && python login_test.py
+Simplified Python Login Script - Uses existing Chrome debug service
 """
 
 from selenium import webdriver
@@ -17,45 +16,62 @@ USERNAME = os.getenv("SMS_USERNAME", "mhmehedi007")
 PASSWORD = os.getenv("SMS_PASSWORD", "##2023@@$$")
 COOKIES_FILE = "cookies.json"
 
-print("🚀 Starting login...")
+print("🚀 Starting simplified login...")
 print(f"Username: {USERNAME}\n")
 
-# Try to connect to existing Chrome debug service first
-print("📱 Connecting to Chrome...")
-options = Options()
-
-# Check if Chrome debug service is available
+# Check if Chrome debug service is running
+print("🔍 Checking Chrome debug service...")
+import urllib.request
 try:
-    import urllib.request
-    urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
-    print("   Using existing Chrome debug service...")
-    options.add_experimental_option("debuggerAddress", "localhost:9222")
-    driver = webdriver.Chrome(options=options)
-    print("✅ Connected to existing Chrome\n")
+    response = urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
+    print("✅ Chrome debug service is running")
+    use_debug_service = True
 except:
-    # Launch new Chrome (visible, not headless)
-    print("   Launching new Chrome (visible window)...")
-    # Remove headless for local testing - Chrome will open visibly
-    # options.add_argument('--headless=new')  # Commented out for visible Chrome
+    print("⚠️ Chrome debug service not running, will launch new Chrome")
+    use_debug_service = False
+
+if use_debug_service:
+    # Connect to existing Chrome
+    print("📱 Connecting to existing Chrome...")
+    options = Options()
+    options.add_experimental_option("debuggerAddress", "localhost:9222")
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("✅ Connected to existing Chrome\n")
+    except Exception as e:
+        print(f"❌ Failed to connect: {e}")
+        print("💡 Make sure Chrome debug service is running: systemctl start chrome-debug")
+        exit(1)
+else:
+    # Launch new Chrome with minimal options
+    print("📱 Launching new Chrome...")
+    options = Options()
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    driver = webdriver.Chrome(options=options)
-    print("✅ Chrome launched (visible window)\n")
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("✅ Chrome launched\n")
+    except Exception as e:
+        print(f"❌ Failed to launch Chrome: {e}")
+        print("💡 Try: npm run login (Node.js script is more stable)")
+        exit(1)
 
 try:
     # Navigate
     print(f"🌐 Navigating to: {URL}")
     driver.get(URL)
     time.sleep(3)
-    print(f"✅ Page loaded\n")
+    print(f"✅ Page loaded: {driver.current_url}\n")
     
     # Fill username
     print("📝 Filling username...")
     username_field = driver.find_element(By.NAME, "username")
     username_field.clear()
     username_field.send_keys(USERNAME)
-    print("✅ Username filled\n")
+    print(f"✅ Username filled\n")
     time.sleep(0.5)
     
     # Fill password
@@ -89,25 +105,25 @@ try:
             print(f"✅ CAPTCHA filled: {answer}\n")
             time.sleep(0.5)
     except Exception as e:
-        print(f"⚠️ CAPTCHA not found: {e}\n")
+        print(f"⚠️ CAPTCHA not found or error: {e}\n")
     
     # Click login
     print("🔘 Clicking login button...")
     try:
         login_button = driver.find_element(By.CLASS_NAME, "login100-form-btn")
         driver.execute_script("arguments[0].click();", login_button)
-        print("✅ Login clicked\n")
+        print("✅ Login button clicked\n")
     except Exception as e:
-        print(f"⚠️ Click failed: {e}, trying Enter...")
+        print(f"⚠️ Click failed: {e}, trying Enter key...")
         password_field.send_keys("\n")
     
-    # Wait
-    print("⏳ Waiting...")
+    # Wait for navigation
+    print("⏳ Waiting for login...")
     time.sleep(5)
     
     # Check result
     current_url = driver.current_url
-    print(f"📍 URL: {current_url}\n")
+    print(f"📍 Current URL: {current_url}\n")
     
     if "/login" not in current_url and "/ints/login" not in current_url:
         print("✅ Login successful!\n")
@@ -117,9 +133,9 @@ try:
         cookies = driver.get_cookies()
         with open(COOKIES_FILE, 'w') as f:
             json.dump(cookies, f, indent=2)
-        print(f"✅ Saved {len(cookies)} cookies\n")
+        print(f"✅ Saved {len(cookies)} cookies to {COOKIES_FILE}\n")
     else:
-        print("⚠️ Still on login page\n")
+        print("⚠️ Still on login page - login may have failed\n")
     
     print("✅ Done!")
     
@@ -128,9 +144,6 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 finally:
-    # Don't quit if connected to existing Chrome
-    if 'debuggerAddress' not in str(options.experimental_options):
-        try:
-            driver.quit()
-        except:
-            pass
+    if not use_debug_service and driver:
+        driver.quit()
+

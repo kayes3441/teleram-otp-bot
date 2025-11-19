@@ -33,10 +33,13 @@ print(f"Password: {'*' * len(PASSWORD)}\n")
 # ---- DRIVER ----
 print("📱 Launching Chrome...")
 options = webdriver.ChromeOptions()
-# Uncomment if you want headless mode
-# options.add_argument('--headless')
+# Headless mode for server (required)
+options.add_argument('--headless=new')
 options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
+options.add_argument('--disable-gpu')
+options.add_argument('--disable-software-rasterizer')
+options.add_argument('--window-size=1920,1080')
 
 # Use webdriver-manager if available, otherwise use system ChromeDriver
 if USE_WEBDRIVER_MANAGER:

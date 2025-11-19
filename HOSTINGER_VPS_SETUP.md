@@ -18,7 +18,7 @@ This guide will help you set up your Telegram OTP Bot on Hostinger VPS from scra
 ### 1.1 Purchase VPS
 1. Go to: https://www.hostinger.com/vps-hosting
 2. Choose **VPS 1** plan (or higher if needed)
-3. Select **Ubuntu 22.04 LTS** as operating system
+3. Select **Ubuntu 24.04 LTS** as operating system
 4. Complete purchase
 
 ### 1.2 Get VPS Details

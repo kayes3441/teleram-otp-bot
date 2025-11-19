@@ -104,6 +104,15 @@ sudo nano telegramNumberBot.js
 npm install
 ```
 
+## Step 10.5: Install Python Dependencies
+
+```bash
+# Install Selenium (if not done by install.sh)
+pip3 install selenium webdriver-manager
+# OR if requirements.txt exists:
+pip3 install -r requirements.txt
+```
+
 ---
 
 ## Step 11: Copy Systemd Service Files
@@ -164,15 +173,28 @@ curl http://localhost:9222/json/version
 
 ---
 
-## Step 17: Login to Chrome (One-time Setup)
+## Step 17: Login to SMS Portal (One-time Setup)
 
-**Option A: Using the helper script:**
+**Option A: Using Python Script (Recommended - Saves Cookies):**
+```bash
+cd /opt/teleram-otp-bot
+python3 login_test.py
+```
+*This will login and save cookies to cookies.json*
+
+**Option B: Using Node.js Script:**
+```bash
+cd /opt/teleram-otp-bot
+npm run login
+```
+
+**Option C: Using Chrome Helper Script:**
 ```bash
 ./login_chrome.sh
 ```
 *Follow the prompts to login*
 
-**Option B: Manual login:**
+**Option D: Manual login:**
 ```bash
 sudo systemctl stop chrome-debug
 ```

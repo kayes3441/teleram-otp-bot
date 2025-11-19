@@ -6,10 +6,10 @@ Wants=network.target
 [Service]
 Type=forking
 User=root
-WorkingDirectory=/var/www/html/telegram/teleram-otp-bot
+WorkingDirectory=/opt/teleram-otp-bot
 ExecStartPre=/bin/bash -c 'pkill -f "chrome.*remote-debugging" || true'
 ExecStartPre=/bin/sleep 2
-ExecStart=/bin/bash -c '/var/www/html/telegram/teleram-otp-bot/start_chrome_debug_linux.sh'
+ExecStart=/bin/bash -c '/opt/teleram-otp-bot/start_chrome_debug_linux.sh'
 Restart=always
 RestartSec=10
 StandardOutput=journal

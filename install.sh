@@ -52,8 +52,9 @@ echo "✅ npm installed: $(npm --version)"
 # Install Google Chrome
 echo "📦 Installing Google Chrome..."
 if ! command -v google-chrome &> /dev/null; then
-    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+    # Ubuntu 24.04 compatible method
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
     apt-get update
     apt-get install -y google-chrome-stable
 else
@@ -105,10 +106,43 @@ echo "✅ ChromeDriver installed: $(chromedriver --version)"
 echo "📦 Installing Xvfb for headless operation..."
 apt-get install -y xvfb
 
+# Install Python 3 and pip
+echo "📦 Installing Python 3 and pip..."
+apt-get install -y python3 python3-pip python3-venv
+
+# Verify Python installation
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 installation failed"
+    exit 1
+fi
+
+echo "✅ Python 3 installed: $(python3 --version)"
+echo "✅ pip installed: $(python3 -m pip --version)"
+
 # Install project dependencies
 echo "📦 Installing project dependencies..."
 cd "$(dirname "$0")"
 npm install
+
+# Install Python dependencies (Selenium)
+echo "📦 Installing Python dependencies (Selenium)..."
+if [ -f "requirements.txt" ]; then
+    python3 -m pip install -r requirements.txt
+else
+    python3 -m pip install selenium webdriver-manager
+fi
+
+echo "✅ Python dependencies installed"
+
+# Install Python dependencies (Selenium)
+echo "📦 Installing Python dependencies (Selenium)..."
+if [ -f "requirements.txt" ]; then
+    python3 -m pip install -r requirements.txt
+else
+    python3 -m pip install selenium webdriver-manager
+fi
+
+echo "✅ Python dependencies installed"
 
 # Create necessary directories
 echo "📁 Creating necessary directories..."
@@ -141,16 +175,20 @@ echo "✅ Installation Complete!"
 echo "=========================================="
 echo ""
 echo "Next steps:"
-echo "1. Edit configuration in telegramNumberBot.js or create .env file"
-echo "2. Update Chrome service with your login credentials:"
-echo "   sudo nano /etc/systemd/system/chrome-debug.service"
-echo "3. Enable and start services:"
+echo "1. Edit configuration in telegramNumberBot.js (update bot token on line 13)"
+echo "2. Enable services:"
 echo "   sudo systemctl enable chrome-debug telegram-otp-bot"
+echo "   sudo systemctl daemon-reload"
+echo "3. Start Chrome service:"
 echo "   sudo systemctl start chrome-debug"
+echo "4. Login using Python script (saves cookies):"
+echo "   python3 login_test.py"
+echo "   OR"
+echo "   npm run login"
+echo "5. Start bot:"
 echo "   sudo systemctl start telegram-otp-bot"
-echo "4. Check status:"
+echo "6. Check status:"
 echo "   sudo systemctl status telegram-otp-bot"
-echo "   sudo systemctl status chrome-debug"
 echo ""
 echo "View logs:"
 echo "   sudo journalctl -u telegram-otp-bot -f"

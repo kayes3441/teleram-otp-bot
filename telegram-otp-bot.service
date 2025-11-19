@@ -10,6 +10,9 @@ WorkingDirectory=/opt/teleram-otp-bot
 Environment="NODE_ENV=production"
 Environment="PORT=8810"
 Environment="USE_WEBHOOK=false"
+Environment="USE_EXTERNAL_CHROME=true"
+Environment="SMS_USERNAME=mhmehedi007"
+Environment="SMS_PASSWORD=##2023@@$$"
 ExecStart=/usr/bin/node telegramNumberBot.js
 Restart=always
 RestartSec=10

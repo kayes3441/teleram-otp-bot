@@ -11,6 +11,8 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 import re
 import os
+import subprocess
+import sys
 
 # Try to use webdriver-manager for automatic ChromeDriver management
 try:
@@ -30,52 +32,89 @@ print("🚀 Starting login test...")
 print(f"Username: {USERNAME}")
 print(f"Password: {'*' * len(PASSWORD)}\n")
 
+# Start Xvfb if not running (for headless display)
+print("🖥️ Checking for Xvfb...")
+try:
+    result = subprocess.run(['pgrep', '-x', 'Xvfb'], capture_output=True)
+    if result.returncode != 0:
+        print("   Starting Xvfb...")
+        subprocess.Popen(['Xvfb', ':99', '-screen', '0', '1024x768x24'], 
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2)
+        print("   ✅ Xvfb started")
+    else:
+        print("   ✅ Xvfb already running")
+    os.environ['DISPLAY'] = ':99'
+except Exception as e:
+    print(f"   ⚠️ Xvfb check failed: {e}")
+
 # ---- DRIVER ----
 print("📱 Launching Chrome...")
 options = webdriver.ChromeOptions()
-# Minimal options for stability
+# Essential options for server stability
 options.add_argument('--headless=new')
 options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 options.add_argument('--disable-gpu')
-options.add_argument('--disable-software-rasterizer')
 options.add_argument('--window-size=1920,1080')
 options.add_argument('--disable-extensions')
+options.add_argument('--disable-software-rasterizer')
+options.add_argument('--disable-setuid-sandbox')
 options.add_argument('--disable-background-timer-throttling')
 options.add_argument('--disable-backgrounding-occluded-windows')
 options.add_argument('--disable-renderer-backgrounding')
-options.add_argument('--disable-features=TranslateUI')
-options.add_argument('--disable-ipc-flooding-protection')
+options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
 options.add_argument('--remote-debugging-port=9224')
-options.add_argument('--disable-setuid-sandbox')
 options.add_argument('--disable-web-security')
-options.add_argument('--disable-features=VizDisplayCompositor')
+options.add_argument('--disable-blink-features=AutomationControlled')
 
 # Try system ChromeDriver first (more reliable on server)
 print("   Using system ChromeDriver...")
-try:
-    driver = webdriver.Chrome(options=options)
-except Exception as e:
-    print(f"⚠️ System ChromeDriver failed: {e}")
-    print("   Trying webdriver-manager...")
-    if USE_WEBDRIVER_MANAGER:
-        try:
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-            print("   ✅ Using webdriver-manager ChromeDriver")
-        except Exception as e2:
-            print(f"❌ Error: {e2}")
-            print("\n💡 Solutions:")
-            print("   1. Check ChromeDriver: chromedriver --version")
-            print("   2. Install ChromeDriver: apt install chromium-chromedriver")
-            print("   3. Or download manually from: https://chromedriver.chromium.org/")
-            exit(1)
-    else:
-        print(f"❌ Error: {e}")
-        print("\n💡 Solutions:")
-        print("   1. Install ChromeDriver: chromedriver --version")
-        print("   2. Install webdriver-manager: pip install webdriver-manager")
-        exit(1)
+driver = None
+for attempt in range(3):
+    try:
+        driver = webdriver.Chrome(options=options)
+        # Verify driver is working
+        driver.current_url
+        print(f"   ✅ Chrome started successfully (attempt {attempt + 1})")
+        break
+    except Exception as e:
+        print(f"   ⚠️ Attempt {attempt + 1} failed: {str(e)[:100]}")
+        if attempt < 2:
+            print("   Retrying...")
+            time.sleep(2)
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+        else:
+            print("   Trying webdriver-manager...")
+            if USE_WEBDRIVER_MANAGER:
+                try:
+                    service = Service(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=options)
+                    driver.current_url  # Verify
+                    print("   ✅ Using webdriver-manager ChromeDriver")
+                    break
+                except Exception as e2:
+                    print(f"❌ Error: {e2}")
+                    print("\n💡 Solutions:")
+                    print("   1. Check ChromeDriver: chromedriver --version")
+                    print("   2. Install ChromeDriver: apt install chromium-chromedriver")
+                    print("   3. Or use: npm run login (Node.js script)")
+                    exit(1)
+            else:
+                print(f"❌ All attempts failed")
+                print("\n💡 Solutions:")
+                print("   1. Check ChromeDriver: chromedriver --version")
+                print("   2. Install webdriver-manager: pip install webdriver-manager")
+                print("   3. Or use: npm run login (Node.js script)")
+                exit(1)
+
+if not driver:
+    print("❌ Failed to start Chrome")
+    exit(1)
 
 print("✅ Chrome launched\n")
 

@@ -36,7 +36,7 @@ try:
 except Exception as e:
     # Launch new Chrome (headless for server)
     print("   Chrome debug service not available, launching new Chrome...")
-    # Use headless mode (required for VPS/server)
+    # Use headless mode with stability options for Ubuntu 24.04
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
@@ -44,9 +44,24 @@ except Exception as e:
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--disable-software-rasterizer')
     options.add_argument('--disable-setuid-sandbox')
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-background-timer-throttling')
+    options.add_argument('--disable-backgrounding-occluded-windows')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
+    options.add_argument('--remote-debugging-port=9225')
+    options.add_argument('--disable-web-security')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-ipc-flooding-protection')
+    
+    # Set display for headless
+    os.environ['DISPLAY'] = ':99'
     
     try:
         driver = webdriver.Chrome(options=options)
+        # Verify it's working
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
         print("✅ Chrome launched (headless mode)\n")
     except Exception as chrome_error:
         print(f"❌ Failed to launch Chrome: {chrome_error}")

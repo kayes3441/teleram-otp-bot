@@ -1,24 +1,24 @@
 [Unit]
 Description=Chrome with Remote Debugging for SMS Scraping
-After=network.target display-manager.service
+After=network.target
 Wants=network.target
 
 [Service]
-Type=simple
+Type=forking
 User=root
-ExecStart=/opt/teleram-otp-bot/start_chrome_debug_linux.sh
+WorkingDirectory=/var/www/html/telegram/teleram-otp-bot
+ExecStartPre=/bin/bash -c 'pkill -f "chrome.*remote-debugging" || true'
+ExecStartPre=/bin/sleep 2
+ExecStart=/bin/bash -c '/var/www/html/telegram/teleram-otp-bot/start_chrome_debug_linux.sh'
 Restart=always
-RestartSec=5
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=chrome-debug
 
-# Kill existing Chrome instances on start
-ExecStartPre=/bin/bash -c 'pkill -f "chrome.*remote-debugging" || true'
-ExecStartPre=/bin/sleep 2
-
 # Cleanup on stop
 ExecStop=/bin/bash -c 'pkill -f "chrome.*remote-debugging" || true'
+ExecStopPost=/bin/sleep 2
 
 [Install]
 WantedBy=multi-user.target

@@ -1,1 +1,0 @@
-# teleram-otp-bot

@@ -127,19 +127,9 @@ npm install
 # Install Python dependencies (Selenium)
 echo "📦 Installing Python dependencies (Selenium)..."
 if [ -f "requirements.txt" ]; then
-    python3 -m pip install -r requirements.txt
+    python3 -m pip install --break-system-packages -r requirements.txt
 else
-    python3 -m pip install selenium webdriver-manager
-fi
-
-echo "✅ Python dependencies installed"
-
-# Install Python dependencies (Selenium)
-echo "📦 Installing Python dependencies (Selenium)..."
-if [ -f "requirements.txt" ]; then
-    python3 -m pip install -r requirements.txt
-else
-    python3 -m pip install selenium webdriver-manager
+    python3 -m pip install --break-system-packages selenium webdriver-manager
 fi
 
 echo "✅ Python dependencies installed"

@@ -7,6 +7,8 @@ Usage: source venv/bin/activate && python login_test.py
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 import re
 import os
@@ -82,19 +84,22 @@ try:
     time.sleep(3)
     print(f"✅ Page loaded\n")
     
+    # Wait for page to load
+    wait = WebDriverWait(driver, 10)
+    
     # Fill username
     print("📝 Filling username...")
-    username_field = driver.find_element(By.NAME, "username")
-    username_field.clear()
-    username_field.send_keys(USERNAME)
+    username_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
+    username_input.clear()
+    username_input.send_keys(USERNAME)
     print("✅ Username filled\n")
     time.sleep(0.5)
     
     # Fill password
     print("📝 Filling password...")
-    password_field = driver.find_element(By.NAME, "password")
-    password_field.clear()
-    password_field.send_keys(PASSWORD)
+    password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
+    password_input.clear()
+    password_input.send_keys(PASSWORD)
     print("✅ Password filled\n")
     time.sleep(0.5)
     
@@ -115,9 +120,9 @@ try:
                 answer = num1 * num2
             print(f"   Found: {num1} {op} {num2} = {answer}")
             
-            capt_field = driver.find_element(By.NAME, "capt")
-            capt_field.clear()
-            capt_field.send_keys(str(answer))
+            captcha_input = wait.until(EC.presence_of_element_located((By.NAME, "capt")))
+            captcha_input.clear()
+            captcha_input.send_keys(str(answer))
             print(f"✅ CAPTCHA filled: {answer}\n")
             time.sleep(0.5)
     except Exception as e:

@@ -40,6 +40,13 @@ options.add_argument('--disable-dev-shm-usage')
 options.add_argument('--disable-gpu')
 options.add_argument('--disable-software-rasterizer')
 options.add_argument('--window-size=1920,1080')
+options.add_argument('--disable-extensions')
+options.add_argument('--disable-background-timer-throttling')
+options.add_argument('--disable-backgrounding-occluded-windows')
+options.add_argument('--disable-renderer-backgrounding')
+options.add_argument('--disable-features=TranslateUI')
+options.add_argument('--disable-ipc-flooding-protection')
+options.add_argument('--remote-debugging-port=9224')
 
 # Try system ChromeDriver first (more reliable on server)
 print("   Using system ChromeDriver...")
@@ -72,8 +79,10 @@ print("✅ Chrome launched\n")
 try:
     # Navigate to login page
     print(f"🌐 Navigating to: {URL}")
+    driver.set_page_load_timeout(30)
+    driver.implicitly_wait(10)
     driver.get(URL)
-    time.sleep(2)
+    time.sleep(3)
     print(f"✅ Page loaded: {driver.current_url}\n")
     
     # ---- FILL USERNAME & PASSWORD ----

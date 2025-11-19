@@ -33,7 +33,7 @@ print(f"Password: {'*' * len(PASSWORD)}\n")
 # ---- DRIVER ----
 print("📱 Launching Chrome...")
 options = webdriver.ChromeOptions()
-# Headless mode for server (required)
+# Minimal options for stability
 options.add_argument('--headless=new')
 options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
@@ -47,6 +47,9 @@ options.add_argument('--disable-renderer-backgrounding')
 options.add_argument('--disable-features=TranslateUI')
 options.add_argument('--disable-ipc-flooding-protection')
 options.add_argument('--remote-debugging-port=9224')
+options.add_argument('--disable-setuid-sandbox')
+options.add_argument('--disable-web-security')
+options.add_argument('--disable-features=VizDisplayCompositor')
 
 # Try system ChromeDriver first (more reliable on server)
 print("   Using system ChromeDriver...")
@@ -76,14 +79,35 @@ except Exception as e:
 
 print("✅ Chrome launched\n")
 
+# Retry mechanism for navigation
+max_retries = 3
+for attempt in range(max_retries):
+    try:
+        # Navigate to login page
+        print(f"🌐 Navigating to: {URL} (attempt {attempt + 1}/{max_retries})...")
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
+        driver.get(URL)
+        time.sleep(3)
+        # Verify page loaded
+        current_url = driver.current_url
+        print(f"✅ Page loaded: {current_url}\n")
+        break
+    except Exception as nav_error:
+        print(f"⚠️ Navigation attempt {attempt + 1} failed: {nav_error}")
+        if attempt < max_retries - 1:
+            print("   Retrying...")
+            time.sleep(2)
+            # Recreate driver if needed
+            try:
+                driver.quit()
+            except:
+                pass
+            driver = webdriver.Chrome(options=options)
+        else:
+            raise
+
 try:
-    # Navigate to login page
-    print(f"🌐 Navigating to: {URL}")
-    driver.set_page_load_timeout(30)
-    driver.implicitly_wait(10)
-    driver.get(URL)
-    time.sleep(3)
-    print(f"✅ Page loaded: {driver.current_url}\n")
     
     # ---- FILL USERNAME & PASSWORD ----
     print("📝 Filling username...")

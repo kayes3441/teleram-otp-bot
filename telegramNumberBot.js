@@ -1753,59 +1753,129 @@ bot.on("document", async (ctx) => {
 async function startScraper() {
   let browser;
   try {
-    console.log("Connecting to Chrome at http://localhost:9222...");
+    // Check if we should use external Chrome (VPS) or bundled Chromium (Railway/Cloud)
+    const USE_EXTERNAL_CHROME = process.env.USE_EXTERNAL_CHROME === "true";
+    const SMS_USERNAME = process.env.SMS_USERNAME || "mhmehedi007";
+    const SMS_PASSWORD = process.env.SMS_PASSWORD || "2023@@$$";
     
-    // Check if Chrome debugging is available first
-    try {
-      // Use Node.js built-in fetch (available in Node 18+)
-      const https = require('http');
-      const response = await new Promise((resolve, reject) => {
-        const req = https.get('http://localhost:9222/json/version', (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              resolve({ ok: true, status: res.statusCode });
-            } else {
-              reject(new Error(`HTTP ${res.statusCode}`));
-            }
+    if (USE_EXTERNAL_CHROME) {
+      // VPS mode: Connect to external Chrome with remote debugging
+      console.log("Connecting to Chrome at http://localhost:9222...");
+      
+      try {
+        const https = require('http');
+        const response = await new Promise((resolve, reject) => {
+          const req = https.get('http://localhost:9222/json/version', (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              if (res.statusCode === 200) {
+                resolve({ ok: true, status: res.statusCode });
+              } else {
+                reject(new Error(`HTTP ${res.statusCode}`));
+              }
+            });
+          });
+          req.on('error', reject);
+          req.setTimeout(2000, () => {
+            req.destroy();
+            reject(new Error('Connection timeout'));
           });
         });
-        req.on('error', reject);
-        req.setTimeout(2000, () => {
-          req.destroy();
-          reject(new Error('Connection timeout'));
-        });
+      } catch (checkError) {
+        throw new Error("Chrome debugging not available - Chrome is not running with remote debugging");
+      }
+      
+      browser = await puppeteer.connect({
+        browserURL: "http://localhost:9222",
+        defaultViewport: null,
       });
-    } catch (checkError) {
-      throw new Error("Chrome debugging not available - Chrome is not running with remote debugging");
+    } else {
+      // Railway/Cloud mode: Launch Puppeteer's bundled Chromium
+      console.log("Launching Puppeteer Chromium (Railway/Cloud mode)...");
+      
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+        ],
+        defaultViewport: { width: 1920, height: 1080 },
+      });
     }
-    
-    browser = await puppeteer.connect({
-      browserURL: "http://localhost:9222",
-      defaultViewport: null,
-    });
 
     const targetUrl = "http://185.2.83.39/ints/agent/SMSCDRStats";
+    const loginUrl = "http://185.2.83.39/ints/login";
     let targetPage = null;
-    const pages = await browser.pages();
-    for (const page of pages) {
-      const pageUrl = await page.url();
-      if (pageUrl.includes("/ints/agent/SMSCDRStats")) {
-        targetPage = page;
-        console.log("Found target tab:", pageUrl);
-        break;
+    
+    if (USE_EXTERNAL_CHROME) {
+      // VPS mode: Try to find existing tab
+      const pages = await browser.pages();
+      for (const page of pages) {
+        const pageUrl = await page.url();
+        if (pageUrl.includes("/ints/agent/SMSCDRStats")) {
+          targetPage = page;
+          console.log("Found target tab:", pageUrl);
+          break;
+        }
       }
     }
-
+    
+    // If no existing page found, create a new one
     if (!targetPage) {
-      console.warn("No tab found with URL", targetUrl, "Opening a new tab...");
+      console.log("Opening new page...");
       targetPage = await browser.newPage();
+      
+      // If not using external Chrome, we need to login
+      if (!USE_EXTERNAL_CHROME) {
+        console.log("Logging into SMS portal...");
+        await targetPage.goto(loginUrl, {
+          waitUntil: "networkidle2",
+          timeout: 30000,
+        });
+        
+        // Wait for login form and fill credentials
+        try {
+          await targetPage.waitForSelector('input[type="text"], input[name="username"], input[name="user"]', { timeout: 10000 });
+          await targetPage.type('input[type="text"], input[name="username"], input[name="user"]', SMS_USERNAME);
+          
+          await targetPage.waitForSelector('input[type="password"]', { timeout: 10000 });
+          await targetPage.type('input[type="password"]', SMS_PASSWORD);
+          
+          // Click login button - try multiple selectors
+          try {
+            await targetPage.click('button[type="submit"]');
+          } catch {
+            try {
+              await targetPage.click('input[type="submit"]');
+            } catch {
+              // Try to find button with text "Login"
+              await targetPage.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const loginBtn = buttons.find(btn => btn.textContent.toLowerCase().includes('login'));
+                if (loginBtn) loginBtn.click();
+              });
+            }
+          }
+          await targetPage.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 });
+          
+          console.log("Login successful!");
+        } catch (loginError) {
+          console.error("Login error:", loginError.message);
+          console.log("⚠️ Auto-login failed. You may need to login manually or check credentials.");
+        }
+      }
+      
+      // Navigate to SMS stats page
       await targetPage.goto(targetUrl, {
         waitUntil: "networkidle2",
         timeout: 30000,
       });
-      console.log("New tab opened. Ensure you are logged in manually.");
+      console.log("Navigated to SMS stats page");
     }
 
     let uniqueRows = new Set();
@@ -1837,9 +1907,18 @@ async function startScraper() {
         const currentUrl = await targetPage.url();
         if (!currentUrl.includes("/ints/agent/SMSCDRStats")) {
           console.warn(
-            `Redirected to ${currentUrl}. Ensure you are logged in manually in the Chrome instance.`
+            `Redirected to ${currentUrl}. May need to login again.`
           );
-          return;
+          // Try to navigate back
+          try {
+            await targetPage.goto(targetUrl, {
+              waitUntil: "networkidle2",
+              timeout: 30000,
+            });
+          } catch (navError) {
+            console.error("Failed to navigate back:", navError.message);
+            return;
+          }
         }
 
         const tableFound = await targetPage.waitForSelector("table#dt", {

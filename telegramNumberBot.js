@@ -1756,7 +1756,7 @@ async function startScraper() {
     // Check if we should use external Chrome (VPS) or bundled Chromium (Railway/Cloud)
     const USE_EXTERNAL_CHROME = process.env.USE_EXTERNAL_CHROME === "true";
     const SMS_USERNAME = process.env.SMS_USERNAME || "mhmehedi007";
-    const SMS_PASSWORD = process.env.SMS_PASSWORD || "2023@@$$";
+    const SMS_PASSWORD = process.env.SMS_PASSWORD || "##2023@@$$";
     
     if (USE_EXTERNAL_CHROME) {
       // VPS mode: Connect to external Chrome with remote debugging
@@ -2015,136 +2015,53 @@ async function startScraper() {
               if (mathAnswer !== null) {
                 console.log(`Solving math CAPTCHA: Answer is ${mathAnswer}`);
                 
-                // Find and fill the answer field
-                const answerFilled = await targetPage.evaluate((answer) => {
-                  // Method 1: Find input by looking for text containing "What is" and finding nearby input
-                  const allText = document.body.innerText || '';
-                  const mathIndex = allText.indexOf('What is');
-                  
-                  if (mathIndex !== -1) {
-                    // Find all text nodes and inputs
-                    const walker = document.createTreeWalker(
-                      document.body,
-                      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-                      null
-                    );
-                    
-                    let node;
-                    let foundMathText = false;
-                    while (node = walker.nextNode()) {
-                      if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('What is')) {
-                        foundMathText = true;
-                        // Look for input near this text
-                        let parent = node.parentElement;
-                        for (let i = 0; i < 5; i++) {
-                          if (!parent) break;
-                          const input = parent.querySelector('input[type="text"], input[type="number"], input:not([type="password"])');
-                          if (input) {
-                            input.value = answer;
-                            input.dispatchEvent(new Event('input', { bubbles: true }));
-                            input.dispatchEvent(new Event('change', { bubbles: true }));
-                            return true;
-                          }
-                          parent = parent.parentElement;
-                        }
-                      }
+                // Fill the CAPTCHA answer field using name="capt"
+                try {
+                  await targetPage.waitForSelector('input[name="capt"]', { timeout: 5000 });
+                  await targetPage.type('input[name="capt"]', mathAnswer.toString(), { delay: 100 });
+                  console.log(`✅ Math CAPTCHA answer filled in capt field: ${mathAnswer}`);
+                  await delay(500);
+                } catch (captError) {
+                  console.log(`⚠️ Could not find input[name="capt"], trying alternative methods...`);
+                  // Fallback: try to find any input near the math question
+                  const answerFilled = await targetPage.evaluate((answer) => {
+                    const captInput = document.querySelector('input[name="capt"]');
+                    if (captInput) {
+                      captInput.value = answer;
+                      captInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      captInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      return true;
                     }
+                    return false;
+                  }, mathAnswer);
+                  
+                  if (answerFilled) {
+                    console.log(`✅ Math CAPTCHA answer filled (fallback method): ${mathAnswer}`);
+                  } else {
+                    console.log(`⚠️ Could not find capt field, but answer is: ${mathAnswer}`);
                   }
-                  
-                  // Method 2: Find all inputs and check which one is near the math question
-                  const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="number"], input:not([type="password"]):not([type="submit"])'));
-                  for (const input of inputs) {
-                    const form = input.closest('form');
-                    if (form) {
-                      const formText = form.textContent || '';
-                      if (formText.includes('What is') && formText.includes('Answer')) {
-                        input.value = answer;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        return true;
-                      }
-                    }
-                  }
-                  
-                  // Method 3: If there are multiple text inputs, the answer is usually the one after "What is"
-                  // Find the input that comes after text containing "What is"
-                  const textNodes = [];
-                  const walker2 = document.createTreeWalker(
-                    document.body,
-                    NodeFilter.SHOW_TEXT,
-                    null
-                  );
-                  
-                  while (node = walker2.nextNode()) {
-                    if (node.textContent.trim().includes('What is')) {
-                      // Find next input sibling
-                      let next = node.parentElement;
-                      while (next) {
-                        const input = next.querySelector('input[type="text"], input[type="number"]');
-                        if (input) {
-                          input.value = answer;
-                          input.dispatchEvent(new Event('input', { bubbles: true }));
-                          input.dispatchEvent(new Event('change', { bubbles: true }));
-                          return true;
-                        }
-                        next = next.nextElementSibling;
-                      }
-                    }
-                  }
-                  
-                  // Method 4: Last resort - try the last text input (often the answer field)
-                  if (inputs.length > 0) {
-                    const lastInput = inputs[inputs.length - 1];
-                    lastInput.value = answer;
-                    lastInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    lastInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    return true;
-                  }
-                  
-                  return false;
-                }, mathAnswer);
-                
-                if (answerFilled) {
-                  console.log(`✅ Math CAPTCHA answer filled: ${mathAnswer}`);
-                  await delay(500); // Wait a bit after filling
-                } else {
-                  console.log(`⚠️ Could not find answer field, but answer is: ${mathAnswer}`);
                 }
               }
               
-              // Wait for login form and fill credentials
-              const usernameSelector = await targetPage.evaluate(() => {
-                // Try to find username field (exclude the answer field)
-                const selectors = [
-                  'input[name="username"]',
-                  'input[name="user"]',
-                  'input[name="email"]',
-                  'input[id*="user"]',
-                  'input[id*="login"]',
-                  'input[type="text"]',
-                ];
-                for (const sel of selectors) {
-                  const els = Array.from(document.querySelectorAll(sel));
-                  for (const el of els) {
-                    // Skip if it's likely the answer field
-                    const label = el.closest('form')?.textContent || '';
-                    if (!label.includes('Answer') && el.offsetParent !== null) {
-                      return sel + (els.indexOf(el) > 0 ? `:nth-of-type(${els.indexOf(el) + 1})` : '');
-                    }
-                  }
-                }
-                return null;
-              });
-              
-              if (!usernameSelector) {
-                throw new Error("Username field not found");
+              // Fill username field using name="username"
+              console.log("Filling username field...");
+              try {
+                await targetPage.waitForSelector('input[name="username"]', { timeout: 10000 });
+                await targetPage.type('input[name="username"]', SMS_USERNAME, { delay: 100 });
+                console.log(`✅ Username filled: ${SMS_USERNAME}`);
+              } catch (userError) {
+                throw new Error(`Username field (name="username") not found: ${userError.message}`);
               }
               
-              await targetPage.waitForSelector(usernameSelector, { timeout: 10000 });
-              await targetPage.type(usernameSelector, SMS_USERNAME, { delay: 100 });
-              
-              await targetPage.waitForSelector('input[type="password"]', { timeout: 10000 });
-              await targetPage.type('input[type="password"]', SMS_PASSWORD, { delay: 100 });
+              // Fill password field using name="password"
+              console.log("Filling password field...");
+              try {
+                await targetPage.waitForSelector('input[name="password"]', { timeout: 10000 });
+                await targetPage.type('input[name="password"]', SMS_PASSWORD, { delay: 100 });
+                console.log(`✅ Password filled`);
+              } catch (passError) {
+                throw new Error(`Password field (name="password") not found: ${passError.message}`);
+              }
               
               // Click login button - try multiple selectors
               const loginClicked = await targetPage.evaluate(() => {

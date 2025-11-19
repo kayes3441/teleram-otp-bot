@@ -1758,6 +1758,12 @@ async function startScraper() {
     const SMS_USERNAME = process.env.SMS_USERNAME || "mhmehedi007";
     const SMS_PASSWORD = process.env.SMS_PASSWORD || "##2023@@$$";
     
+    // Log credentials status (without showing password)
+    console.log(`📋 SMS Credentials: Username=${SMS_USERNAME}, Password=${SMS_PASSWORD ? '***' + SMS_PASSWORD.slice(-3) : 'NOT SET'}`);
+    if (!SMS_USERNAME || !SMS_PASSWORD) {
+      console.warn("⚠️ SMS_USERNAME or SMS_PASSWORD not set! Auto-login will fail.");
+    }
+    
     if (USE_EXTERNAL_CHROME) {
       // VPS mode: Connect to external Chrome with remote debugging
       console.log("Connecting to Chrome at http://localhost:9222...");
@@ -1903,99 +1909,231 @@ async function startScraper() {
         }
       });
       
-      // If not using external Chrome, we need to login
-      if (!USE_EXTERNAL_CHROME) {
+      // Check if already logged in by navigating to target URL first
+      console.log("Checking if already logged in...");
+      let alreadyLoggedIn = false;
+      let serverReachable = false;
+      try {
+        console.log(`Attempting to reach server at ${targetUrl}...`);
+        await targetPage.goto(targetUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000, // Increased timeout
+        });
+        await delay(2000);
+        serverReachable = true;
+        const currentUrl = targetPage.url();
+        const pageContent = await targetPage.evaluate(() => {
+          return {
+            url: window.location.href,
+            title: document.title,
+            bodyText: document.body.innerText.substring(0, 200),
+            hasLoginForm: !!document.querySelector('input[name="username"]') || !!document.querySelector('input[type="password"]'),
+          };
+        });
+        
+        console.log(`Server response - URL: ${currentUrl}, Title: ${pageContent.title}`);
+        
+        // Check if we're on the SMS stats page (logged in) or login page (not logged in)
+        if (currentUrl.includes('/SMSCDRStats') && !pageContent.hasLoginForm) {
+          console.log("✅ Already logged in! Skipping login process.");
+          alreadyLoggedIn = true;
+        } else if (currentUrl.includes('/login') || currentUrl.includes('/ints/login')) {
+          console.log("⚠️ Not logged in. Redirected to login page.");
+          console.log("Current URL:", currentUrl);
+          // If we got redirected to login, we can use this URL
+          if (currentUrl.includes('http://')) {
+            loginUrl = currentUrl;
+            console.log(`Will use redirected login URL: ${loginUrl}`);
+          } else if (currentUrl.includes('https://')) {
+            loginUrl = currentUrl;
+            console.log(`Will use redirected login URL: ${loginUrl}`);
+          }
+        } else {
+          console.log("⚠️ Not logged in. Current URL:", currentUrl);
+          console.log("Page title:", pageContent.title);
+        }
+      } catch (checkError) {
+        console.log("⚠️ Could not reach server or check login status:", checkError.message);
+        console.log("This might indicate:");
+        console.log("  - Server is down or unreachable");
+        console.log("  - Network connectivity issues");
+        console.log("  - URL is incorrect");
+        console.log("Will still attempt login process...");
+      }
+      
+      // Store alreadyLoggedIn in a way that's accessible after the login block
+      const wasAlreadyLoggedIn = alreadyLoggedIn;
+      
+      // Check if we're already on login page (from redirect)
+      let alreadyOnLoginPage = false;
+      try {
+        const currentUrl = targetPage.url();
+        if (currentUrl.includes('/login') || currentUrl.includes('/ints/login')) {
+          alreadyOnLoginPage = true;
+          console.log("✅ Already on login page (from redirect), skipping navigation.");
+        }
+      } catch (e) {
+        // Ignore errors checking URL
+      }
+      
+      // If not using external Chrome and not already logged in, we need to login
+      if (!USE_EXTERNAL_CHROME && !alreadyLoggedIn) {
+        if (!serverReachable) {
+          console.log("⚠️ Warning: Server was not reachable during initial check.");
+          console.log("Will still attempt login, but this may fail if server is down.");
+        }
         console.log("Logging into SMS portal...");
         
         try {
-          // Navigate to login page with retry
+          // Navigate to login page with retry (unless already on login page)
           let loginSuccess = false;
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-              console.log(`Login attempt ${attempt}/3...`);
-              
-              // Try navigating - use multiple strategies and URLs
-              let navigationSuccess = false;
-              const urlsToTry = [loginUrlHttp, loginUrlHttps];
-              
-              for (const url of urlsToTry) {
-                if (navigationSuccess) break;
+          let navigationSuccess = alreadyOnLoginPage; // Skip navigation if already on login page
+          
+          if (!alreadyOnLoginPage) {
+            console.log(`Login URLs to try: ${loginUrlHttp}, ${loginUrlHttps}`);
+            
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                console.log(`Navigation attempt ${attempt}/3...`);
                 
-                console.log(`Attempting navigation to ${url}...`);
-                
-                // Strategy 1: Direct navigation with domcontentloaded
-                try {
-                  await targetPage.goto(url, {
-                    waitUntil: "domcontentloaded",
-                    timeout: 30000,
-                  });
-                  navigationSuccess = true;
-                  loginUrl = url; // Update loginUrl to the one that worked
-                  console.log(`✅ Navigation successful to ${url}`);
-                  break;
-                } catch (navError1) {
-                  console.log(`Navigation to ${url} failed: ${navError1.message}`);
+                // Try navigating - use multiple strategies and URLs
+                const urlsToTry = loginUrl && loginUrl !== loginUrlHttp && loginUrl !== loginUrlHttps ? [loginUrl] : [loginUrlHttp, loginUrlHttps];
+              
+                for (const url of urlsToTry) {
+                  if (navigationSuccess) break;
                   
-                  // Strategy 2: Try with networkidle0
+                  console.log(`Attempting navigation to ${url}...`);
+                  
+                  // Strategy 1: Simple navigation with minimal wait
                   try {
                     await targetPage.goto(url, {
-                      waitUntil: "networkidle0",
-                      timeout: 30000,
+                      waitUntil: "domcontentloaded",
+                      timeout: 60000, // Increased timeout
                     });
+                    await delay(3000); // Wait a bit for page to settle
                     navigationSuccess = true;
                     loginUrl = url;
-                    console.log(`✅ Navigation successful (strategy 2) to ${url}`);
+                    console.log(`✅ Navigation successful to ${url}`);
                     break;
-                  } catch (navError2) {
-                    console.log(`Navigation strategy 2 to ${url} failed: ${navError2.message}`);
+                  } catch (navError1) {
+                    console.log(`Navigation strategy 1 to ${url} failed: ${navError1.message}`);
                     
-                    // Strategy 3: Try with load event
+                    // Strategy 2: Try with load event
                     try {
                       await targetPage.goto(url, {
                         waitUntil: "load",
-                        timeout: 30000,
+                        timeout: 60000,
                       });
+                      await delay(3000);
                       navigationSuccess = true;
                       loginUrl = url;
-                      console.log(`✅ Navigation successful (strategy 3) to ${url}`);
+                      console.log(`✅ Navigation successful (strategy 2) to ${url}`);
                       break;
-                    } catch (navError3) {
-                      console.log(`Navigation strategy 3 to ${url} failed: ${navError3.message}`);
+                    } catch (navError2) {
+                      console.log(`Navigation strategy 2 to ${url} failed: ${navError2.message}`);
+                      
+                      // Strategy 3: Try with networkidle2 (more lenient)
+                      try {
+                        await targetPage.goto(url, {
+                          waitUntil: "networkidle2",
+                          timeout: 60000,
+                        });
+                        navigationSuccess = true;
+                        loginUrl = url;
+                        console.log(`✅ Navigation successful (strategy 3) to ${url}`);
+                        break;
+                      } catch (navError3) {
+                        console.log(`Navigation strategy 3 to ${url} failed: ${navError3.message}`);
+                        
+                        // Strategy 4: Try with very basic navigation (last resort)
+                        try {
+                          console.log(`Trying basic navigation (minimal wait)...`);
+                          const navPromise = targetPage.goto(url, { 
+                            timeout: 60000, 
+                            waitUntil: "domcontentloaded" 
+                          });
+                          // Race with a timeout to not wait too long
+                          await Promise.race([
+                            navPromise,
+                            delay(15000) // Max 15 seconds
+                          ]);
+                          await delay(5000); // Give page time to load
+                          navigationSuccess = true;
+                          loginUrl = url;
+                          console.log(`✅ Navigation successful (strategy 4 - basic) to ${url}`);
+                          break;
+                        } catch (navError4) {
+                          console.log(`Navigation strategy 4 to ${url} failed: ${navError4.message}`);
+                        }
+                      }
                     }
                   }
+                }
+              
+              // Check current page state even if navigation reported failure
+              if (!navigationSuccess) {
+                try {
+                  const currentUrl = targetPage.url();
+                  const pageTitle = await targetPage.title().catch(() => 'Unknown');
+                  console.log(`Current page URL after navigation attempts: ${currentUrl}`);
+                  console.log(`Current page title: ${pageTitle}`);
+                  
+                  // Check if we're actually on the login page despite the error
+                  if (currentUrl.includes('/login') || currentUrl.includes('/ints/login') || currentUrl.includes('185.2.83.39')) {
+                    console.log("⚠️ Navigation reported error but we're on a relevant page - continuing...");
+                    navigationSuccess = true;
+                    // Determine which URL worked
+                    if (currentUrl.includes(loginUrlHttp)) {
+                      loginUrl = loginUrlHttp;
+                    } else if (currentUrl.includes(loginUrlHttps)) {
+                      loginUrl = loginUrlHttps;
+                    }
+                  } else {
+                    // Last attempt: try to navigate to target URL to see if server is reachable
+                    console.log("Trying to check if server is reachable by navigating to target URL...");
+                    try {
+                      await targetPage.goto(targetUrl, {
+                        waitUntil: "domcontentloaded",
+                        timeout: 20000,
+                      });
+                      const checkUrl = targetPage.url();
+                      console.log(`Server is reachable. Current URL: ${checkUrl}`);
+                      // If we got redirected to login, that's actually good
+                      if (checkUrl.includes('/login') || checkUrl.includes('/ints/login')) {
+                        console.log("✅ Got redirected to login page - this is expected");
+                        navigationSuccess = true;
+                        loginUrl = checkUrl;
+                      }
+                    } catch (serverCheckError) {
+                      console.log(`Server check failed: ${serverCheckError.message}`);
+                      throw new Error(`Failed to navigate to login page. Server may be unreachable or URL may be incorrect. Last error: ${serverCheckError.message}`);
+                    }
+                  }
+                } catch (checkError) {
+                  throw new Error(`Failed to navigate to login page with all strategies. Check error: ${checkError.message}`);
                 }
               }
               
               if (!navigationSuccess) {
-                // Even if navigation "failed", check if page loaded
-                const currentUrl = targetPage.url();
-                const pageTitle = await targetPage.title().catch(() => 'Unknown');
-                console.log(`Current page URL: ${currentUrl}`);
-                console.log(`Current page title: ${pageTitle}`);
-                
-                // Check if we're actually on the login page despite the error
-                if (currentUrl.includes('/login') || currentUrl.includes('/ints/login')) {
-                  console.log("⚠️ Navigation reported error but we're on login page - continuing...");
-                  navigationSuccess = true;
-                } else {
-                  throw new Error("Failed to navigate to login page with all strategies and URLs");
-                }
+                throw new Error("Failed to navigate to login page with all strategies and URLs");
               }
               
               // Wait a bit for page to fully load
               await delay(2000);
-              
-              // Debug: Check what's actually on the page
-              const pageContent = await targetPage.evaluate(() => {
-                return {
-                  url: window.location.href,
-                  title: document.title,
-                  bodyText: document.body.innerText.substring(0, 500),
-                  hasForm: !!document.querySelector('form'),
-                  inputCount: document.querySelectorAll('input').length,
-                };
-              });
-              console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
+            } // End of navigation block (if not already on login page)
+            
+            // Now proceed with form filling (we're either navigated to login page or already on it)
+            // Debug: Check what's actually on the page
+            const pageContent = await targetPage.evaluate(() => {
+              return {
+                url: window.location.href,
+                title: document.title,
+                bodyText: document.body.innerText.substring(0, 500),
+                hasForm: !!document.querySelector('form'),
+                inputCount: document.querySelectorAll('input').length,
+              };
+            });
+            console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
               
               // Solve math CAPTCHA if present
               const mathAnswer = await targetPage.evaluate(() => {
@@ -2153,18 +2291,27 @@ async function startScraper() {
           }
           
           console.log("⚠️ Auto-login failed. Check credentials or login page structure.");
+          console.log("💡 Troubleshooting tips:");
+          console.log("   1. Verify SMS_USERNAME and SMS_PASSWORD environment variables are correct");
+          console.log("   2. Check if the login page URL is accessible: http://185.2.83.39/ints/login");
+          console.log("   3. Verify the login page structure hasn't changed");
+          console.log("   4. For VPS mode: Login manually using ./login_chrome.sh");
           throw loginError;
         }
       }
       
-      // Navigate to SMS stats page
-      console.log("Navigating to SMS stats page...");
-      await targetPage.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-      await delay(2000); // Wait for page to load
-      console.log("✅ Navigated to SMS stats page");
+      // Navigate to SMS stats page only if we weren't already logged in
+      if (!wasAlreadyLoggedIn) {
+        console.log("Navigating to SMS stats page...");
+        await targetPage.goto(targetUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+        await delay(2000); // Wait for page to load
+        console.log("✅ Navigated to SMS stats page");
+      } else {
+        console.log("✅ Already on SMS stats page, no need to navigate");
+      }
     }
 
     let uniqueRows = new Set();
@@ -2356,13 +2503,31 @@ async function startScraper() {
     }, 5000);
   } catch (error) {
     // Don't throw - just log and return, so bot can continue without scraper
+    const USE_EXTERNAL_CHROME = process.env.USE_EXTERNAL_CHROME === "true";
     console.log("⚠️ SMS scraper not available:");
     console.log("   " + error.message);
     console.log("\n💡 Bot will continue running, but SMS scraping is disabled.");
     console.log("💡 To enable SMS scraping:");
-    console.log("   1. Run: ./start_chrome_debug.sh");
-    console.log("   2. Login to: http://185.2.83.39/ints/agent/SMSCDRStats");
-    console.log("   3. Restart the bot");
+    
+    if (USE_EXTERNAL_CHROME) {
+      // VPS mode instructions
+      console.log("   (VPS Mode - External Chrome)");
+      console.log("   1. Ensure Chrome is running with remote debugging:");
+      console.log("      sudo systemctl start chrome-debug");
+      console.log("   2. Login manually to Chrome:");
+      console.log("      ./login_chrome.sh");
+      console.log("      OR navigate to: http://185.2.83.39/ints/agent/SMSCDRStats");
+      console.log("   3. Restart the bot");
+    } else {
+      // Railway/Cloud mode instructions
+      console.log("   (Railway/Cloud Mode - Auto-login)");
+      console.log("   1. Verify environment variables are set:");
+      console.log("      SMS_USERNAME and SMS_PASSWORD");
+      console.log("   2. Check if credentials are correct");
+      console.log("   3. Verify login page is accessible");
+      console.log("   4. Check logs above for detailed error information");
+    }
+    
     // Return instead of throwing so bot continues
     return;
   }

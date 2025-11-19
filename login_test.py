@@ -75,29 +75,60 @@ if not driver:
     exit(1)
 
 try:
+    # Wait for page to load
+    wait = WebDriverWait(driver, 20)
+    
+    # Switch to default content (in case we're in an iframe)
+    try:
+        driver.switch_to.default_content()
+    except:
+        pass
+    
     # Navigate
     print(f"🌐 Navigating to: {URL}")
     current_url = driver.current_url
     print(f"   Current URL before navigation: {current_url}")
     
-    # If already on the page, refresh it
-    if URL in current_url or "login" in current_url:
-        print("   Already on login page, refreshing...")
-        driver.refresh()
-    else:
-        driver.get(URL)
+    # Always navigate fresh to ensure clean state
+    print("   Navigating to login page...")
+    driver.get(URL)
     
-    time.sleep(5)  # Wait longer for page to load
+    # Switch back to default content after navigation
+    try:
+        driver.switch_to.default_content()
+    except:
+        pass
+    
+    # Wait for page to be ready
+    print("   Waiting for page to load...")
+    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+    time.sleep(3)  # Extra wait for dynamic content
+    
     print(f"✅ Page loaded: {driver.current_url}\n")
+    
+    # Wait for form elements to appear (they might load via JavaScript)
+    print("⏳ Waiting for form elements to appear...")
+    try:
+        # Wait for any input field to appear
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "input")))
+        print("✅ Input fields detected\n")
+        time.sleep(2)  # Extra wait
+    except:
+        print("⚠️ No input fields found yet\n")
     
     # Debug: Check page source
     try:
         page_source = driver.page_source
-        has_username = "name=\"username\"" in page_source or "name='username'" in page_source
-        has_password = "name=\"password\"" in page_source or "name='password'" in page_source
+        has_username = "name=\"username\"" in page_source or "name='username'" in page_source or 'name="username"' in page_source
+        has_password = "name=\"password\"" in page_source or "name='password'" in page_source or 'name="password"' in page_source
         print(f"🔍 Page source check - Has username field: {has_username}, Has password field: {has_password}")
-    except:
-        pass
+        
+        # Show snippet of page source
+        if "input" in page_source.lower():
+            input_snippet = page_source[page_source.lower().find("input"):page_source.lower().find("input")+200]
+            print(f"   Page source snippet: {input_snippet[:150]}...")
+    except Exception as e:
+        print(f"   Page source check error: {e}")
     
     # Wait for page to load
     wait = WebDriverWait(driver, 20)  # Increased timeout

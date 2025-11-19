@@ -100,6 +100,18 @@ try:
     print("✅ Password filled\n")
     time.sleep(0.5)
     
+    # Check if session is still valid
+    try:
+        driver.current_url
+    except:
+        print("❌ Browser session lost. Restarting...")
+        driver.quit()
+        driver = webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
+        driver.get(URL)
+        time.sleep(3)
+    
     # ---- READ & SOLVE MATH CAPTCHA ----
     print("🔢 Solving math CAPTCHA...")
     
@@ -125,8 +137,8 @@ try:
                 if math_match:
                     captcha_text = math_match.group()
                     print(f"   Found CAPTCHA in body text: {captcha_text}")
-            except:
-                print("⚠️ Could not find CAPTCHA text")
+            except Exception as e:
+                print(f"⚠️ Could not find CAPTCHA text: {e}")
     
     if captcha_text:
         print(f"   Found CAPTCHA: {captcha_text}")
@@ -173,6 +185,13 @@ try:
     else:
         print("⚠️ No CAPTCHA found (might not be required)\n")
     
+    # Check session before clicking
+    try:
+        driver.current_url
+    except:
+        print("❌ Browser session lost before clicking login button")
+        raise
+    
     # ---- CLICK LOGIN ----
     print("🔘 Clicking login button...")
     login_clicked = False
@@ -193,6 +212,12 @@ try:
             print("⚠️ Login button found but not visible/enabled")
     except Exception as e:
         print(f"⚠️ CLASS_NAME method failed: {e}")
+        # Check if session is still valid
+        try:
+            driver.current_url
+        except:
+            print("❌ Browser session lost. Chrome may have crashed.")
+            raise
     
     # Method 2: Try XPath
     if not login_clicked:

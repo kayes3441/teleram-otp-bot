@@ -2213,77 +2213,185 @@ async function startScraper() {
                 }
               }
               
+              // Clear any existing values first
+              await targetPage.evaluate(() => {
+                const usernameInput = document.querySelector('input[name="username"]');
+                const passwordInput = document.querySelector('input[name="password"]');
+                if (usernameInput) usernameInput.value = '';
+                if (passwordInput) passwordInput.value = '';
+              });
+              
               // Fill username field using name="username"
               console.log("Filling username field...");
               try {
                 await targetPage.waitForSelector('input[name="username"]', { timeout: 10000 });
+                // Clear and fill username
+                await targetPage.click('input[name="username"]');
+                await targetPage.keyboard.down('Control');
+                await targetPage.keyboard.press('KeyA');
+                await targetPage.keyboard.up('Control');
                 await targetPage.type('input[name="username"]', SMS_USERNAME, { delay: 100 });
                 console.log(`✅ Username filled: ${SMS_USERNAME}`);
+                await delay(500);
               } catch (userError) {
-                throw new Error(`Username field (name="username") not found: ${userError.message}`);
+                console.log(`⚠️ Error filling username: ${userError.message}`);
+                // Try alternative method
+                const usernameFilled = await targetPage.evaluate((username) => {
+                  const input = document.querySelector('input[name="username"]');
+                  if (input) {
+                    input.value = username;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                  }
+                  return false;
+                }, SMS_USERNAME);
+                if (!usernameFilled) {
+                  throw new Error(`Username field (name="username") not found: ${userError.message}`);
+                }
+                console.log(`✅ Username filled (alternative method): ${SMS_USERNAME}`);
               }
               
               // Fill password field using name="password"
               console.log("Filling password field...");
               try {
                 await targetPage.waitForSelector('input[name="password"]', { timeout: 10000 });
+                // Clear and fill password
+                await targetPage.click('input[name="password"]');
+                await targetPage.keyboard.down('Control');
+                await targetPage.keyboard.press('KeyA');
+                await targetPage.keyboard.up('Control');
                 await targetPage.type('input[name="password"]', SMS_PASSWORD, { delay: 100 });
                 console.log(`✅ Password filled`);
+                await delay(500);
               } catch (passError) {
-                throw new Error(`Password field (name="password") not found: ${passError.message}`);
+                console.log(`⚠️ Error filling password: ${passError.message}`);
+                // Try alternative method
+                const passwordFilled = await targetPage.evaluate((password) => {
+                  const input = document.querySelector('input[name="password"]');
+                  if (input) {
+                    input.value = password;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                  }
+                  return false;
+                }, SMS_PASSWORD);
+                if (!passwordFilled) {
+                  throw new Error(`Password field (name="password") not found: ${passError.message}`);
+                }
+                console.log(`✅ Password filled (alternative method)`);
               }
               
+              // Wait a moment before clicking login
+              await delay(1000);
+              
               // Click login button - try multiple selectors
+              console.log("Attempting to click login button...");
               const loginClicked = await targetPage.evaluate(() => {
                 // Try different button selectors
                 const selectors = [
+                  '.login100-form-btn',  // Specific class for this login form
+                  'button.login100-form-btn',
+                  'input.login100-form-btn',
                   'button[type="submit"]',
                   'input[type="submit"]',
                   'button.btn-primary',
                   'button.btn',
                   'input.btn',
+                  'input[value*="Login"]',
+                  'input[value*="login"]',
                 ];
                 
                 for (const sel of selectors) {
-                  const btn = document.querySelector(sel);
-                  if (btn && btn.offsetParent !== null) {
-                    btn.click();
-                    return true;
+                  try {
+                    const btn = document.querySelector(sel);
+                    if (btn && btn.offsetParent !== null && !btn.disabled) {
+                      btn.focus();
+                      btn.click();
+                      return { success: true, method: sel };
+                    }
+                  } catch (e) {
+                    // Continue to next selector
                   }
                 }
                 
                 // Try to find button with text "Login"
-                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-                const loginBtn = buttons.find(btn => 
-                  btn.textContent && btn.textContent.toLowerCase().includes('login')
-                );
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"]'));
+                const loginBtn = buttons.find(btn => {
+                  const text = (btn.textContent || btn.value || '').toLowerCase();
+                  return text.includes('login') && !btn.disabled;
+                });
                 if (loginBtn) {
+                  loginBtn.focus();
                   loginBtn.click();
-                  return true;
+                  return { success: true, method: 'text-match' };
                 }
                 
-                return false;
+                // Try submitting the form directly
+                const form = document.querySelector('form');
+                if (form) {
+                  form.submit();
+                  return { success: true, method: 'form-submit' };
+                }
+                
+                return { success: false, method: 'none' };
               });
               
-              if (!loginClicked) {
-                // Try pressing Enter
+              if (loginClicked.success) {
+                console.log(`✅ Login button clicked using method: ${loginClicked.method}`);
+              } else {
+                console.log("⚠️ Could not find login button, trying Enter key...");
+                // Try pressing Enter on the password field
+                await targetPage.focus('input[name="password"]');
                 await targetPage.keyboard.press('Enter');
+                console.log("✅ Pressed Enter key");
               }
               
-              // Wait for navigation
+              // Wait for navigation after login
+              console.log("Waiting for login response...");
               await Promise.race([
                 targetPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null),
                 delay(5000)
               ]);
               
+              // Wait a bit more for any redirects
+              await delay(2000);
+              
               // Check if we're logged in (not on login page anymore)
               const currentUrl = targetPage.url();
+              console.log(`After login attempt ${attempt}, current URL: ${currentUrl}`);
+              
+              // Check for error messages on the page
+              const pageErrors = await targetPage.evaluate(() => {
+                const errorSelectors = [
+                  '.error', '.alert-danger', '.alert-error', 
+                  '[class*="error"]', '[class*="Error"]',
+                  'div:contains("error")', 'div:contains("Error")',
+                  'div:contains("invalid")', 'div:contains("Invalid")',
+                  'div:contains("incorrect")', 'div:contains("Incorrect")'
+                ];
+                const bodyText = document.body.innerText || '';
+                const hasErrorText = /error|invalid|incorrect|wrong|failed/i.test(bodyText);
+                return {
+                  hasErrorText,
+                  bodyText: bodyText.substring(0, 500),
+                  url: window.location.href
+                };
+              });
+              
+              if (pageErrors.hasErrorText) {
+                console.log(`⚠️ Possible error message detected on page: ${pageErrors.bodyText.substring(0, 200)}`);
+              }
+              
               if (!currentUrl.includes('/login') && !currentUrl.includes('/ints/login')) {
                 console.log("✅ Login successful!");
                 loginSuccess = true;
                 break;
               } else {
                 console.log(`Login attempt ${attempt} failed - still on login page`);
+                console.log(`Page URL: ${currentUrl}`);
+                console.log(`Page content preview: ${pageErrors.bodyText.substring(0, 200)}`);
               }
             } catch (attemptError) {
               console.log(`Login attempt ${attempt} error:`, attemptError.message);

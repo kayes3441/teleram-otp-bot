@@ -1826,11 +1826,14 @@ async function startScraper() {
       });
     }
 
-    // Try both HTTP and HTTPS versions
+    // Try HTTP first (HTTPS may not be available)
     const targetUrl = "http://185.2.83.39/ints/agent/SMSCDRStats";
     const loginUrlHttp = "http://185.2.83.39/ints/login";
     const loginUrlHttps = "https://185.2.83.39/ints/login";
     let loginUrl = loginUrlHttp; // Default to HTTP
+    
+    // Try HTTP first since HTTPS often fails with connection refused
+    const urlsToTryOrder = [loginUrlHttp, loginUrlHttps];
     let targetPage = null;
     
     if (USE_EXTERNAL_CHROME) {
@@ -1914,13 +1917,24 @@ async function startScraper() {
       let alreadyLoggedIn = false;
       let serverReachable = false;
       try {
-        console.log(`Attempting to reach server at ${targetUrl}...`);
-        await targetPage.goto(targetUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 30000, // Increased timeout
-        });
-        await delay(2000);
-        serverReachable = true;
+        console.log(`Attempting to reach server at ${targetUrl} (HTTP)...`);
+        try {
+          await targetPage.goto(targetUrl, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000, // Increased timeout
+          });
+          await delay(2000);
+          serverReachable = true;
+        } catch (httpError) {
+          const errorMsg = httpError.message || '';
+          if (errorMsg.includes('ERR_CONNECTION_REFUSED') || errorMsg.includes('ECONNREFUSED')) {
+            console.log(`⚠️ HTTP connection refused. Server may be down or unreachable.`);
+            throw httpError;
+          }
+          // Other errors, try to continue
+          console.log(`⚠️ Navigation error (but continuing): ${errorMsg}`);
+          serverReachable = true; // Assume reachable if we got some response
+        }
         const currentUrl = targetPage.url();
         const pageContent = await targetPage.evaluate(() => {
           return {
@@ -1995,14 +2009,20 @@ async function startScraper() {
               let navigationSuccess = alreadyOnLoginPage; // Skip navigation if already on login page
               
               if (!alreadyOnLoginPage) {
-                console.log(`Login URLs to try: ${loginUrlHttp}, ${loginUrlHttps}`);
+                console.log(`Login URLs to try: ${loginUrlHttp} (HTTP first, then HTTPS if needed)`);
                 console.log(`Navigation attempt ${attempt}/3...`);
                 
                 // Try navigating - use multiple strategies and URLs
-                const urlsToTry = loginUrl && loginUrl !== loginUrlHttp && loginUrl !== loginUrlHttps ? [loginUrl] : [loginUrlHttp, loginUrlHttps];
+                // Prefer the loginUrl if it was set from redirect, otherwise try HTTP first
+                let urlsToTry = loginUrl && loginUrl !== loginUrlHttp && loginUrl !== loginUrlHttps ? [loginUrl] : urlsToTryOrder;
+                let skipHttps = false; // Flag to skip HTTPS if connection refused
               
                 for (const url of urlsToTry) {
                   if (navigationSuccess) break;
+                  if (skipHttps && url.includes('https://')) {
+                    console.log(`Skipping HTTPS URL ${url} due to previous connection refused error`);
+                    continue;
+                  }
                   
                   console.log(`Attempting navigation to ${url}...`);
                   
@@ -2018,7 +2038,17 @@ async function startScraper() {
                     console.log(`✅ Navigation successful to ${url}`);
                     break;
                   } catch (navError1) {
-                    console.log(`Navigation strategy 1 to ${url} failed: ${navError1.message}`);
+                    const errorMsg = navError1.message || '';
+                    console.log(`Navigation strategy 1 to ${url} failed: ${errorMsg}`);
+                    
+                    // Skip HTTPS if connection refused (server likely doesn't support HTTPS)
+                    if (url.includes('https://') && (errorMsg.includes('ERR_CONNECTION_REFUSED') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('Connection refused'))) {
+                      console.log(`⚠️ HTTPS connection refused - server likely only supports HTTP. Skipping remaining HTTPS attempts.`);
+                      skipHttps = true;
+                      // Filter out HTTPS URLs from remaining attempts
+                      urlsToTry = urlsToTry.filter(u => !u.includes('https://'));
+                      continue; // Skip to next URL (should be HTTP)
+                    }
                     
                     // Strategy 2: Try with load event
                     try {

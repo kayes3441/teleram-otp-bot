@@ -1806,14 +1806,25 @@ async function startScraper() {
           '--disable-blink-features=AutomationControlled',
           '--disable-web-security',
           '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-infobars',
+          '--disable-notifications',
+          '--disable-popup-blocking',
+          '--disable-default-apps',
+          '--no-first-run',
+          '--no-default-browser-check',
         ],
         defaultViewport: { width: 1920, height: 1080 },
         ignoreHTTPSErrors: true,
+        ignoreDefaultArgs: ['--enable-automation'],
       });
     }
 
+    // Try both HTTP and HTTPS versions
     const targetUrl = "http://185.2.83.39/ints/agent/SMSCDRStats";
-    const loginUrl = "http://185.2.83.39/ints/login";
+    const loginUrlHttp = "http://185.2.83.39/ints/login";
+    const loginUrlHttps = "https://185.2.83.39/ints/login";
+    let loginUrl = loginUrlHttp; // Default to HTTP
     let targetPage = null;
     
     if (USE_EXTERNAL_CHROME) {
@@ -1840,16 +1851,56 @@ async function startScraper() {
       // Set user agent to avoid detection
       await targetPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Enable request interception to allow all requests (prevents ERR_BLOCKED_BY_CLIENT)
-      await targetPage.setRequestInterception(true);
-      targetPage.on('request', (request) => {
-        // Allow all requests - don't block anything
-        request.continue();
+      // Remove webdriver property and other automation indicators
+      await targetPage.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => false,
+        });
+        
+        // Override plugins
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+        
+        // Override languages
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
       });
       
-      // Also handle request failures
+      // Bypass CSP
+      await targetPage.setBypassCSP(true);
+      
+      // Enable request interception BEFORE any navigation (prevents ERR_BLOCKED_BY_CLIENT)
+      await targetPage.setRequestInterception(true);
+      
+      targetPage.on('request', (request) => {
+        // Allow ALL requests - don't block anything
+        const headers = {
+          ...request.headers(),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        };
+        request.continue({ headers });
+      });
+      
+      // Handle request failures for debugging
       targetPage.on('requestfailed', (request) => {
-        console.log(`Request failed: ${request.url()} - ${request.failure()?.errorText}`);
+        const failure = request.failure();
+        console.log(`⚠️ Request failed: ${request.url()}`);
+        if (failure) {
+          console.log(`   Error: ${failure.errorText}`);
+        }
+      });
+      
+      // Handle response errors
+      targetPage.on('response', (response) => {
+        if (!response.ok() && response.status() >= 400) {
+          console.log(`⚠️ Response error: ${response.url()} - Status: ${response.status()}`);
+        }
       });
       
       // If not using external Chrome, we need to login
@@ -1862,10 +1913,62 @@ async function startScraper() {
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
               console.log(`Login attempt ${attempt}/3...`);
-              await targetPage.goto(loginUrl, {
-                waitUntil: "domcontentloaded",
-                timeout: 30000,
-              });
+              
+              // Try navigating - use multiple strategies and URLs
+              let navigationSuccess = false;
+              const urlsToTry = [loginUrlHttp, loginUrlHttps];
+              
+              for (const url of urlsToTry) {
+                if (navigationSuccess) break;
+                
+                console.log(`Attempting navigation to ${url}...`);
+                
+                // Strategy 1: Direct navigation with domcontentloaded
+                try {
+                  await targetPage.goto(url, {
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000,
+                  });
+                  navigationSuccess = true;
+                  loginUrl = url; // Update loginUrl to the one that worked
+                  console.log(`✅ Navigation successful to ${url}`);
+                  break;
+                } catch (navError1) {
+                  console.log(`Navigation to ${url} failed: ${navError1.message}`);
+                  
+                  // Strategy 2: Try with networkidle0
+                  try {
+                    await targetPage.goto(url, {
+                      waitUntil: "networkidle0",
+                      timeout: 30000,
+                    });
+                    navigationSuccess = true;
+                    loginUrl = url;
+                    console.log(`✅ Navigation successful (strategy 2) to ${url}`);
+                    break;
+                  } catch (navError2) {
+                    console.log(`Navigation strategy 2 to ${url} failed: ${navError2.message}`);
+                    
+                    // Strategy 3: Try with load event
+                    try {
+                      await targetPage.goto(url, {
+                        waitUntil: "load",
+                        timeout: 30000,
+                      });
+                      navigationSuccess = true;
+                      loginUrl = url;
+                      console.log(`✅ Navigation successful (strategy 3) to ${url}`);
+                      break;
+                    } catch (navError3) {
+                      console.log(`Navigation strategy 3 to ${url} failed: ${navError3.message}`);
+                    }
+                  }
+                }
+              }
+              
+              if (!navigationSuccess) {
+                throw new Error("Failed to navigate to login page with all strategies and URLs");
+              }
               
               // Wait a bit for page to fully load
               await delay(2000);

@@ -10,7 +10,7 @@ const { Markup } = require("telegraf");
 // ============================================
 
 // Telegram Bot Configuration
-const TELEGRAM_BOT_TOKEN = "8349339737:AAEORrw1g-AZ1PDuQn_w90cdxdrD8C-8ebE";
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8349339737:AAEORrw1g-AZ1PDuQn_w90cdxdrD8C-8ebE";
 const CHANNEL_ID = "-1003315993993"; // OTP Hunter FC group chat ID (numeric format is more reliable)
 const CHANNEL_USERNAME = "@otp_hunter_fc"; // Channel username for display/links
 const ADMIN_TELEGRAM_USER = "aamamun_ce"; // Admin Telegram username (without @)

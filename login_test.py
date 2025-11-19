@@ -33,8 +33,8 @@ try:
     urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
     print("   Using existing Chrome debug service...")
     options.add_experimental_option("debuggerAddress", "localhost:9222")
-# Uncomment if you want headless mode
-# options.add_argument('--headless')
+    driver = webdriver.Chrome(options=options)
+    print("✅ Connected to existing Chrome\n")
 except Exception as e:
     # Launch new Chrome (headless for server)
     options.add_argument('--no-sandbox')

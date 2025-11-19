@@ -1987,13 +1987,15 @@ async function startScraper() {
         try {
           // Navigate to login page with retry (unless already on login page)
           let loginSuccess = false;
-          let navigationSuccess = alreadyOnLoginPage; // Skip navigation if already on login page
           
-          if (!alreadyOnLoginPage) {
-            console.log(`Login URLs to try: ${loginUrlHttp}, ${loginUrlHttps}`);
-            
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              try {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              console.log(`Login attempt ${attempt}/3...`);
+              
+              let navigationSuccess = alreadyOnLoginPage; // Skip navigation if already on login page
+              
+              if (!alreadyOnLoginPage) {
+                console.log(`Login URLs to try: ${loginUrlHttp}, ${loginUrlHttps}`);
                 console.log(`Navigation attempt ${attempt}/3...`);
                 
                 // Try navigating - use multiple strategies and URLs
@@ -2070,70 +2072,70 @@ async function startScraper() {
                   }
                 }
               
-              // Check current page state even if navigation reported failure
-              if (!navigationSuccess) {
-                try {
-                  const currentUrl = targetPage.url();
-                  const pageTitle = await targetPage.title().catch(() => 'Unknown');
-                  console.log(`Current page URL after navigation attempts: ${currentUrl}`);
-                  console.log(`Current page title: ${pageTitle}`);
-                  
-                  // Check if we're actually on the login page despite the error
-                  if (currentUrl.includes('/login') || currentUrl.includes('/ints/login') || currentUrl.includes('185.2.83.39')) {
-                    console.log("⚠️ Navigation reported error but we're on a relevant page - continuing...");
-                    navigationSuccess = true;
-                    // Determine which URL worked
-                    if (currentUrl.includes(loginUrlHttp)) {
-                      loginUrl = loginUrlHttp;
-                    } else if (currentUrl.includes(loginUrlHttps)) {
-                      loginUrl = loginUrlHttps;
-                    }
-                  } else {
-                    // Last attempt: try to navigate to target URL to see if server is reachable
-                    console.log("Trying to check if server is reachable by navigating to target URL...");
-                    try {
-                      await targetPage.goto(targetUrl, {
-                        waitUntil: "domcontentloaded",
-                        timeout: 20000,
-                      });
-                      const checkUrl = targetPage.url();
-                      console.log(`Server is reachable. Current URL: ${checkUrl}`);
-                      // If we got redirected to login, that's actually good
-                      if (checkUrl.includes('/login') || checkUrl.includes('/ints/login')) {
-                        console.log("✅ Got redirected to login page - this is expected");
-                        navigationSuccess = true;
-                        loginUrl = checkUrl;
+                // Check current page state even if navigation reported failure
+                if (!navigationSuccess) {
+                  try {
+                    const currentUrl = targetPage.url();
+                    const pageTitle = await targetPage.title().catch(() => 'Unknown');
+                    console.log(`Current page URL after navigation attempts: ${currentUrl}`);
+                    console.log(`Current page title: ${pageTitle}`);
+                    
+                    // Check if we're actually on the login page despite the error
+                    if (currentUrl.includes('/login') || currentUrl.includes('/ints/login') || currentUrl.includes('185.2.83.39')) {
+                      console.log("⚠️ Navigation reported error but we're on a relevant page - continuing...");
+                      navigationSuccess = true;
+                      // Determine which URL worked
+                      if (currentUrl.includes(loginUrlHttp)) {
+                        loginUrl = loginUrlHttp;
+                      } else if (currentUrl.includes(loginUrlHttps)) {
+                        loginUrl = loginUrlHttps;
                       }
-                    } catch (serverCheckError) {
-                      console.log(`Server check failed: ${serverCheckError.message}`);
-                      throw new Error(`Failed to navigate to login page. Server may be unreachable or URL may be incorrect. Last error: ${serverCheckError.message}`);
+                    } else {
+                      // Last attempt: try to navigate to target URL to see if server is reachable
+                      console.log("Trying to check if server is reachable by navigating to target URL...");
+                      try {
+                        await targetPage.goto(targetUrl, {
+                          waitUntil: "domcontentloaded",
+                          timeout: 20000,
+                        });
+                        const checkUrl = targetPage.url();
+                        console.log(`Server is reachable. Current URL: ${checkUrl}`);
+                        // If we got redirected to login, that's actually good
+                        if (checkUrl.includes('/login') || checkUrl.includes('/ints/login')) {
+                          console.log("✅ Got redirected to login page - this is expected");
+                          navigationSuccess = true;
+                          loginUrl = checkUrl;
+                        }
+                      } catch (serverCheckError) {
+                        console.log(`Server check failed: ${serverCheckError.message}`);
+                        throw new Error(`Failed to navigate to login page. Server may be unreachable or URL may be incorrect. Last error: ${serverCheckError.message}`);
+                      }
                     }
+                  } catch (checkError) {
+                    throw new Error(`Failed to navigate to login page with all strategies. Check error: ${checkError.message}`);
                   }
-                } catch (checkError) {
-                  throw new Error(`Failed to navigate to login page with all strategies. Check error: ${checkError.message}`);
                 }
-              }
+                
+                if (!navigationSuccess) {
+                  throw new Error("Failed to navigate to login page with all strategies and URLs");
+                }
+                
+                // Wait a bit for page to fully load
+                await delay(2000);
+              } // End of navigation block (if not already on login page)
               
-              if (!navigationSuccess) {
-                throw new Error("Failed to navigate to login page with all strategies and URLs");
-              }
-              
-              // Wait a bit for page to fully load
-              await delay(2000);
-            } // End of navigation block (if not already on login page)
-            
-            // Now proceed with form filling (we're either navigated to login page or already on it)
-            // Debug: Check what's actually on the page
-            const pageContent = await targetPage.evaluate(() => {
-              return {
-                url: window.location.href,
-                title: document.title,
-                bodyText: document.body.innerText.substring(0, 500),
-                hasForm: !!document.querySelector('form'),
-                inputCount: document.querySelectorAll('input').length,
-              };
-            });
-            console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
+              // Now proceed with form filling (we're either navigated to login page or already on it)
+              // Debug: Check what's actually on the page
+              const pageContent = await targetPage.evaluate(() => {
+                return {
+                  url: window.location.href,
+                  title: document.title,
+                  bodyText: document.body.innerText.substring(0, 500),
+                  hasForm: !!document.querySelector('form'),
+                  inputCount: document.querySelectorAll('input').length,
+                };
+              });
+              console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
               
               // Solve math CAPTCHA if present
               const mathAnswer = await targetPage.evaluate(() => {

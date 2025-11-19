@@ -2011,33 +2011,33 @@ async function startScraper() {
               if (!alreadyOnLoginPage) {
                 console.log(`Login URLs to try: ${loginUrlHttp} (HTTP first, then HTTPS if needed)`);
                 console.log(`Navigation attempt ${attempt}/3...`);
-                
-                // Try navigating - use multiple strategies and URLs
+              
+              // Try navigating - use multiple strategies and URLs
                 // Prefer the loginUrl if it was set from redirect, otherwise try HTTP first
                 let urlsToTry = loginUrl && loginUrl !== loginUrlHttp && loginUrl !== loginUrlHttps ? [loginUrl] : urlsToTryOrder;
                 let skipHttps = false; // Flag to skip HTTPS if connection refused
               
-                for (const url of urlsToTry) {
-                  if (navigationSuccess) break;
+              for (const url of urlsToTry) {
+                if (navigationSuccess) break;
                   if (skipHttps && url.includes('https://')) {
                     console.log(`Skipping HTTPS URL ${url} due to previous connection refused error`);
                     continue;
                   }
-                  
-                  console.log(`Attempting navigation to ${url}...`);
-                  
+                
+                console.log(`Attempting navigation to ${url}...`);
+                
                   // Strategy 1: Simple navigation with minimal wait
-                  try {
-                    await targetPage.goto(url, {
-                      waitUntil: "domcontentloaded",
+                try {
+                  await targetPage.goto(url, {
+                    waitUntil: "domcontentloaded",
                       timeout: 60000, // Increased timeout
-                    });
+                  });
                     await delay(3000); // Wait a bit for page to settle
-                    navigationSuccess = true;
+                  navigationSuccess = true;
                     loginUrl = url;
-                    console.log(`✅ Navigation successful to ${url}`);
-                    break;
-                  } catch (navError1) {
+                  console.log(`✅ Navigation successful to ${url}`);
+                  break;
+                } catch (navError1) {
                     const errorMsg = navError1.message || '';
                     console.log(`Navigation strategy 1 to ${url} failed: ${errorMsg}`);
                     
@@ -2051,31 +2051,31 @@ async function startScraper() {
                     }
                     
                     // Strategy 2: Try with load event
-                    try {
-                      await targetPage.goto(url, {
+                  try {
+                    await targetPage.goto(url, {
                         waitUntil: "load",
                         timeout: 60000,
-                      });
+                    });
                       await delay(3000);
-                      navigationSuccess = true;
-                      loginUrl = url;
-                      console.log(`✅ Navigation successful (strategy 2) to ${url}`);
-                      break;
-                    } catch (navError2) {
-                      console.log(`Navigation strategy 2 to ${url} failed: ${navError2.message}`);
-                      
+                    navigationSuccess = true;
+                    loginUrl = url;
+                    console.log(`✅ Navigation successful (strategy 2) to ${url}`);
+                    break;
+                  } catch (navError2) {
+                    console.log(`Navigation strategy 2 to ${url} failed: ${navError2.message}`);
+                    
                       // Strategy 3: Try with networkidle2 (more lenient)
-                      try {
-                        await targetPage.goto(url, {
+                    try {
+                      await targetPage.goto(url, {
                           waitUntil: "networkidle2",
                           timeout: 60000,
-                        });
-                        navigationSuccess = true;
-                        loginUrl = url;
-                        console.log(`✅ Navigation successful (strategy 3) to ${url}`);
-                        break;
-                      } catch (navError3) {
-                        console.log(`Navigation strategy 3 to ${url} failed: ${navError3.message}`);
+                      });
+                      navigationSuccess = true;
+                      loginUrl = url;
+                      console.log(`✅ Navigation successful (strategy 3) to ${url}`);
+                      break;
+                    } catch (navError3) {
+                      console.log(`Navigation strategy 3 to ${url} failed: ${navError3.message}`);
                         
                         // Strategy 4: Try with very basic navigation (last resort)
                         try {
@@ -2103,24 +2103,24 @@ async function startScraper() {
                 }
               
                 // Check current page state even if navigation reported failure
-                if (!navigationSuccess) {
+              if (!navigationSuccess) {
                   try {
-                    const currentUrl = targetPage.url();
-                    const pageTitle = await targetPage.title().catch(() => 'Unknown');
+                const currentUrl = targetPage.url();
+                const pageTitle = await targetPage.title().catch(() => 'Unknown');
                     console.log(`Current page URL after navigation attempts: ${currentUrl}`);
-                    console.log(`Current page title: ${pageTitle}`);
-                    
-                    // Check if we're actually on the login page despite the error
+                console.log(`Current page title: ${pageTitle}`);
+                
+                // Check if we're actually on the login page despite the error
                     if (currentUrl.includes('/login') || currentUrl.includes('/ints/login') || currentUrl.includes('185.2.83.39')) {
                       console.log("⚠️ Navigation reported error but we're on a relevant page - continuing...");
-                      navigationSuccess = true;
+                  navigationSuccess = true;
                       // Determine which URL worked
                       if (currentUrl.includes(loginUrlHttp)) {
                         loginUrl = loginUrlHttp;
                       } else if (currentUrl.includes(loginUrlHttps)) {
                         loginUrl = loginUrlHttps;
                       }
-                    } else {
+                } else {
                       // Last attempt: try to navigate to target URL to see if server is reachable
                       console.log("Trying to check if server is reachable by navigating to target URL...");
                       try {
@@ -2148,10 +2148,10 @@ async function startScraper() {
                 
                 if (!navigationSuccess) {
                   throw new Error("Failed to navigate to login page with all strategies and URLs");
-                }
-                
-                // Wait a bit for page to fully load
-                await delay(2000);
+              }
+              
+              // Wait a bit for page to fully load
+              await delay(2000);
               } // End of navigation block (if not already on login page)
               
               // Now proceed with form filling (we're either navigated to login page or already on it)
@@ -2167,33 +2167,116 @@ async function startScraper() {
               });
               console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
               
-              // Solve math CAPTCHA if present
+              // Solve math CAPTCHA if present (improved detection from HTML structure)
               const mathAnswer = await targetPage.evaluate(() => {
-                // Look for math question text like "What is 10 + 5 = ?"
+                // Method 1: Find in wrap-input100 div (from HTML structure)
+                const wrapDivs = Array.from(document.querySelectorAll('.wrap-input100'));
+                for (const div of wrapDivs) {
+                  const text = div.textContent || div.innerText || '';
+                  // Look for "What is X + Y = ?" pattern
+                  const mathMatch = text.match(/What is (\d+)\s*([+\-*])\s*(\d+)\s*=\s*\?/i);
+                  if (mathMatch) {
+                    const num1 = parseInt(mathMatch[1]);
+                    const num2 = parseInt(mathMatch[3]);
+                    const operator = mathMatch[2];
+                    let answer;
+                    if (operator === '+') answer = num1 + num2;
+                    else if (operator === '-') answer = num1 - num2;
+                    else if (operator === '*') answer = num1 * num2;
+                    else answer = num1 + num2; // default
+                    return { found: true, num1, num2, operator, answer, source: 'wrap-input100' };
+                  }
+                }
+                
+                // Method 2: Get all text content and search
                 const text = document.body.innerText || document.body.textContent || '';
-                const mathMatch = text.match(/What is (\d+)\s*\+\s*(\d+)\s*=\s*\?/i);
+                
+                // Look for math patterns: "What is 10 + 5 = ?"
+                let mathMatch = text.match(/What is (\d+)\s*([+\-*])\s*(\d+)\s*=\s*\?/i);
                 if (mathMatch) {
                   const num1 = parseInt(mathMatch[1]);
-                  const num2 = parseInt(mathMatch[2]);
-                  const answer = num1 + num2;
-                  console.log(`Math CAPTCHA: ${num1} + ${num2} = ${answer}`);
-                  return answer;
+                  const num2 = parseInt(mathMatch[3]);
+                  const operator = mathMatch[2];
+                  let answer;
+                  if (operator === '+') answer = num1 + num2;
+                  else if (operator === '-') answer = num1 - num2;
+                  else if (operator === '*') answer = num1 * num2;
+                  else answer = num1 + num2;
+                  return { found: true, num1, num2, operator, answer, source: 'body-text' };
                 }
-                return null;
+                
+                // Method 3: Find any element containing "What is" and math operators
+                const elementsWithMath = Array.from(document.querySelectorAll('*')).filter(el => {
+                  const elText = el.textContent || '';
+                  return elText.includes('What is') && 
+                         (elText.includes('+') || elText.includes('-') || elText.includes('*')) && 
+                         /\d+/.test(elText) && elText.length < 100;
+                });
+                
+                if (elementsWithMath.length > 0) {
+                  const mathText = elementsWithMath[0].textContent;
+                  const mathMatch = mathText.match(/What is (\d+)\s*([+\-*])\s*(\d+)\s*=\s*\?/i);
+                  if (mathMatch) {
+                    const num1 = parseInt(mathMatch[1]);
+                    const num2 = parseInt(mathMatch[3]);
+                    const operator = mathMatch[2];
+                    let answer;
+                    if (operator === '+') answer = num1 + num2;
+                    else if (operator === '-') answer = num1 - num2;
+                    else if (operator === '*') answer = num1 * num2;
+                    else answer = num1 + num2;
+                    return { found: true, num1, num2, operator, answer, source: 'element-search' };
+                  }
+                }
+                
+                return { found: false };
               });
               
-              if (mathAnswer !== null) {
-                console.log(`Solving math CAPTCHA: Answer is ${mathAnswer}`);
+              if (mathAnswer && mathAnswer.found) {
+                console.log(`Solving math CAPTCHA: ${mathAnswer.num1} ${mathAnswer.operator} ${mathAnswer.num2} = ${mathAnswer.answer} (found in: ${mathAnswer.source})`);
                 
-                // Fill the CAPTCHA answer field using name="capt"
+                // Fill the CAPTCHA answer field using name="capt" (type="number" input)
                 try {
                   await targetPage.waitForSelector('input[name="capt"]', { timeout: 5000 });
-                  await targetPage.type('input[name="capt"]', mathAnswer.toString(), { delay: 100 });
-                  console.log(`✅ Math CAPTCHA answer filled in capt field: ${mathAnswer}`);
-                  await delay(500);
+                  
+                  // For number input, we need to set the value properly
+                  const captInput = await targetPage.$('input[name="capt"]');
+                  if (captInput) {
+                    // Clear field first
+                    await captInput.click();
+                    await targetPage.keyboard.down('Control');
+                    await targetPage.keyboard.press('KeyA');
+                    await targetPage.keyboard.up('Control');
+                    
+                    // Type the answer (for number input)
+                    await captInput.type(mathAnswer.answer.toString(), { delay: 100 });
+                    
+                    // Verify the value was set
+                    const captValue = await targetPage.evaluate(() => {
+                      const input = document.querySelector('input[name="capt"]');
+                      return input ? input.value : null;
+                    });
+                    
+                    if (captValue === mathAnswer.answer.toString()) {
+                      console.log(`✅ Math CAPTCHA answer filled and verified: ${mathAnswer.answer}`);
+                    } else {
+                      console.log(`⚠️ CAPTCHA value mismatch: got '${captValue}', expected '${mathAnswer.answer}'`);
+                      // Try setting value directly
+                      await targetPage.evaluate((answer) => {
+                        const input = document.querySelector('input[name="capt"]');
+                        if (input) {
+                          input.value = answer;
+                          input.dispatchEvent(new Event('input', { bubbles: true }));
+                          input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                      }, mathAnswer.answer.toString());
+                      console.log(`✅ Math CAPTCHA answer set directly: ${mathAnswer.answer}`);
+                    }
+                    await delay(500);
+                  }
                 } catch (captError) {
                   console.log(`⚠️ Could not find input[name="capt"], trying alternative methods...`);
-                  // Fallback: try to find any input near the math question
+                  // Fallback: use evaluate to set value directly (like Python)
                   const answerFilled = await targetPage.evaluate((answer) => {
                     const captInput = document.querySelector('input[name="capt"]');
                     if (captInput) {
@@ -2203,14 +2286,16 @@ async function startScraper() {
                       return true;
                     }
                     return false;
-                  }, mathAnswer);
+                  }, mathAnswer.answer.toString());
                   
                   if (answerFilled) {
-                    console.log(`✅ Math CAPTCHA answer filled (fallback method): ${mathAnswer}`);
+                    console.log(`✅ Math CAPTCHA answer filled (fallback method): ${mathAnswer.answer}`);
                   } else {
-                    console.log(`⚠️ Could not find capt field, but answer is: ${mathAnswer}`);
+                    console.log(`⚠️ Could not find capt field, but answer is: ${mathAnswer.answer}`);
                   }
                 }
+              } else {
+                console.log('⚠️ No math CAPTCHA found (might not be required)');
               }
               
               // Clear any existing values first
@@ -2221,21 +2306,26 @@ async function startScraper() {
                 if (passwordInput) passwordInput.value = '';
               });
               
-              // Fill username field using name="username"
+              // Fill username field using name="username" (like Python Selenium send_keys)
               console.log("Filling username field...");
               try {
                 await targetPage.waitForSelector('input[name="username"]', { timeout: 10000 });
-                // Clear and fill username
-                await targetPage.click('input[name="username"]');
-                await targetPage.keyboard.down('Control');
-                await targetPage.keyboard.press('KeyA');
-                await targetPage.keyboard.up('Control');
-                await targetPage.type('input[name="username"]', SMS_USERNAME, { delay: 100 });
+                // Use find element and send_keys approach (like Python)
+                const usernameInput = await targetPage.$('input[name="username"]');
+                if (usernameInput) {
+                  await usernameInput.click();
+                  await targetPage.keyboard.down('Control');
+                  await targetPage.keyboard.press('KeyA');
+                  await targetPage.keyboard.up('Control');
+                  await usernameInput.type(SMS_USERNAME, { delay: 100 });
                 console.log(`✅ Username filled: ${SMS_USERNAME}`);
-                await delay(500);
+                  await delay(500);
+                } else {
+                  throw new Error('Username input not found');
+                }
               } catch (userError) {
                 console.log(`⚠️ Error filling username: ${userError.message}`);
-                // Try alternative method
+                // Try alternative method (direct value setting)
                 const usernameFilled = await targetPage.evaluate((username) => {
                   const input = document.querySelector('input[name="username"]');
                   if (input) {
@@ -2247,26 +2337,31 @@ async function startScraper() {
                   return false;
                 }, SMS_USERNAME);
                 if (!usernameFilled) {
-                  throw new Error(`Username field (name="username") not found: ${userError.message}`);
+                throw new Error(`Username field (name="username") not found: ${userError.message}`);
                 }
                 console.log(`✅ Username filled (alternative method): ${SMS_USERNAME}`);
               }
               
-              // Fill password field using name="password"
+              // Fill password field using name="password" (like Python Selenium send_keys)
               console.log("Filling password field...");
               try {
                 await targetPage.waitForSelector('input[name="password"]', { timeout: 10000 });
-                // Clear and fill password
-                await targetPage.click('input[name="password"]');
-                await targetPage.keyboard.down('Control');
-                await targetPage.keyboard.press('KeyA');
-                await targetPage.keyboard.up('Control');
-                await targetPage.type('input[name="password"]', SMS_PASSWORD, { delay: 100 });
+                // Use find element and send_keys approach (like Python)
+                const passwordInput = await targetPage.$('input[name="password"]');
+                if (passwordInput) {
+                  await passwordInput.click();
+                  await targetPage.keyboard.down('Control');
+                  await targetPage.keyboard.press('KeyA');
+                  await targetPage.keyboard.up('Control');
+                  await passwordInput.type(SMS_PASSWORD, { delay: 100 });
                 console.log(`✅ Password filled`);
-                await delay(500);
+                  await delay(500);
+                } else {
+                  throw new Error('Password input not found');
+                }
               } catch (passError) {
                 console.log(`⚠️ Error filling password: ${passError.message}`);
-                // Try alternative method
+                // Try alternative method (direct value setting)
                 const passwordFilled = await targetPage.evaluate((password) => {
                   const input = document.querySelector('input[name="password"]');
                   if (input) {
@@ -2278,74 +2373,117 @@ async function startScraper() {
                   return false;
                 }, SMS_PASSWORD);
                 if (!passwordFilled) {
-                  throw new Error(`Password field (name="password") not found: ${passError.message}`);
+                throw new Error(`Password field (name="password") not found: ${passError.message}`);
                 }
                 console.log(`✅ Password filled (alternative method)`);
               }
               
-              // Wait a moment before clicking login
+              // Wait a moment before clicking login (like Python time.sleep)
               await delay(1000);
               
-              // Click login button - try multiple selectors
+              // Click login button using CLASS_NAME (like Python Selenium with JavaScript click)
               console.log("Attempting to click login button...");
-              const loginClicked = await targetPage.evaluate(() => {
-                // Try different button selectors
+              let loginClicked = false;
+              
+              // Method 1: JavaScript click (most reliable, like Python's execute_script)
+              try {
+                loginClicked = await targetPage.evaluate(() => {
+                  const btn = document.querySelector('.login100-form-btn');
+                  if (btn) {
+                    // Check if visible and enabled
+                    const rect = btn.getBoundingClientRect();
+                    const isVisible = rect.width > 0 && rect.height > 0 && btn.offsetParent !== null;
+                    const isEnabled = !btn.disabled;
+                    
+                    if (isVisible && isEnabled) {
+                      // Scroll into view
+                      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      // Use JavaScript click (more reliable)
+                      btn.click();
+                      return { success: true, method: 'JavaScript click' };
+                    } else {
+                      return { success: false, reason: 'button not visible or disabled' };
+                    }
+                  }
+                  return { success: false, reason: 'button not found' };
+                });
+                
+                if (loginClicked.success) {
+                  console.log(`✅ Login button clicked (${loginClicked.method})`);
+                  loginClicked = true;
+                } else {
+                  console.log(`⚠️ JavaScript click failed: ${loginClicked.reason}`);
+                  loginClicked = false;
+                }
+              } catch (btnError) {
+                console.log(`⚠️ JavaScript click error: ${btnError.message}`);
+                loginClicked = false;
+              }
+              
+              // Method 2: Puppeteer click with scroll
+              if (!loginClicked) {
+                try {
+                  const loginButton = await targetPage.$('.login100-form-btn');
+                  if (loginButton) {
+                    // Scroll into view
+                    await loginButton.evaluate(btn => btn.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+                    await delay(500);
+                    await loginButton.click();
+                    loginClicked = true;
+                    console.log("✅ Login button clicked (Puppeteer click with scroll)");
+                  }
+                } catch (btnError) {
+                  console.log(`⚠️ Puppeteer click failed: ${btnError.message}`);
+                }
+              }
+              
+              // Method 3: Try other selectors
+              if (!loginClicked) {
                 const selectors = [
-                  '.login100-form-btn',  // Specific class for this login form
                   'button.login100-form-btn',
                   'input.login100-form-btn',
                   'button[type="submit"]',
                   'input[type="submit"]',
-                  'button.btn-primary',
-                  'button.btn',
-                  'input.btn',
-                  'input[value*="Login"]',
-                  'input[value*="login"]',
                 ];
                 
                 for (const sel of selectors) {
                   try {
-                    const btn = document.querySelector(sel);
-                    if (btn && btn.offsetParent !== null && !btn.disabled) {
-                      btn.focus();
-                      btn.click();
-                      return { success: true, method: sel };
+                    const btn = await targetPage.$(sel);
+                    if (btn) {
+                      await btn.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+                      await delay(500);
+                      await btn.click();
+                      loginClicked = true;
+                      console.log(`✅ Login button clicked using selector: ${sel}`);
+                      break;
                     }
                   } catch (e) {
                     // Continue to next selector
                   }
                 }
-                
-                // Try to find button with text "Login"
-                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"]'));
-                const loginBtn = buttons.find(btn => {
-                  const text = (btn.textContent || btn.value || '').toLowerCase();
-                  return text.includes('login') && !btn.disabled;
-                });
-                if (loginBtn) {
-                  loginBtn.focus();
-                  loginBtn.click();
-                  return { success: true, method: 'text-match' };
-                }
-                
-                // Try submitting the form directly
-                const form = document.querySelector('form');
-                if (form) {
-                  form.submit();
-                  return { success: true, method: 'form-submit' };
-                }
-                
-                return { success: false, method: 'none' };
-              });
+              }
               
-              if (loginClicked.success) {
-                console.log(`✅ Login button clicked using method: ${loginClicked.method}`);
-              } else {
-                console.log("⚠️ Could not find login button, trying Enter key...");
-                // Try pressing Enter on the password field
+              // Method 4: Try form submit
+              if (!loginClicked) {
+                try {
+                  const form = await targetPage.$('form');
+                  if (form) {
+                    await form.evaluate(form => form.submit());
+                    loginClicked = true;
+                    console.log("✅ Form submitted");
+                  }
+                } catch (e) {
+                  console.log(`⚠️ Form submit failed: ${e.message}`);
+                }
+              }
+              
+              // Method 5: Try Enter key as last resort
+              if (!loginClicked) {
+                console.log("⚠️ Could not click login button, trying Enter key...");
                 await targetPage.focus('input[name="password"]');
                 await targetPage.keyboard.press('Enter');
                 console.log("✅ Pressed Enter key");
+                loginClicked = true; // Assume Enter will work
               }
               
               // Wait for navigation after login
@@ -2430,25 +2568,36 @@ async function startScraper() {
             console.log("Could not get debug info:", debugError.message);
           }
           
-          console.log("⚠️ Auto-login failed. Check credentials or login page structure.");
+          console.log("⚠️ Auto-login failed. This may not be possible due to login page protections.");
           console.log("💡 Troubleshooting tips:");
           console.log("   1. Verify SMS_USERNAME and SMS_PASSWORD environment variables are correct");
           console.log("   2. Check if the login page URL is accessible: http://185.2.83.39/ints/login");
           console.log("   3. Verify the login page structure hasn't changed");
-          console.log("   4. For VPS mode: Login manually using ./login_chrome.sh");
+          console.log("");
+          console.log("💡 Alternative Solution - Use VPS Mode with Manual Login:");
+          console.log("   If auto-login is not possible, use VPS mode with manual login:");
+          console.log("   1. Set USE_EXTERNAL_CHROME=true");
+          console.log("   2. Start Chrome with remote debugging: sudo systemctl start chrome-debug");
+          console.log("   3. Login manually: ./login_chrome.sh");
+          console.log("   4. The bot will use your existing Chrome session");
+          console.log("");
+          console.log("   This is the recommended approach if auto-login fails.");
+          
+          // For Railway/Cloud mode, we can't do manual login, so throw the error
+          // For VPS mode, manual login should already be done, so this shouldn't happen
           throw loginError;
         }
       }
       
       // Navigate to SMS stats page only if we weren't already logged in
       if (!wasAlreadyLoggedIn) {
-        console.log("Navigating to SMS stats page...");
-        await targetPage.goto(targetUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 30000,
-        });
-        await delay(2000); // Wait for page to load
-        console.log("✅ Navigated to SMS stats page");
+      console.log("Navigating to SMS stats page...");
+      await targetPage.goto(targetUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await delay(2000); // Wait for page to load
+      console.log("✅ Navigated to SMS stats page");
       } else {
         console.log("✅ Already on SMS stats page, no need to navigate");
       }
@@ -2657,15 +2806,25 @@ async function startScraper() {
       console.log("   2. Login manually to Chrome:");
       console.log("      ./login_chrome.sh");
       console.log("      OR navigate to: http://185.2.83.39/ints/agent/SMSCDRStats");
-      console.log("   3. Restart the bot");
+    console.log("   3. Restart the bot");
     } else {
       // Railway/Cloud mode instructions
       console.log("   (Railway/Cloud Mode - Auto-login)");
+      console.log("   ⚠️ Auto-login may not be possible due to login page protections.");
+      console.log("");
+      console.log("   Option 1 - Try fixing auto-login:");
       console.log("   1. Verify environment variables are set:");
       console.log("      SMS_USERNAME and SMS_PASSWORD");
       console.log("   2. Check if credentials are correct");
       console.log("   3. Verify login page is accessible");
       console.log("   4. Check logs above for detailed error information");
+      console.log("");
+      console.log("   Option 2 - Use VPS Mode (Recommended if auto-login fails):");
+      console.log("   Switch to VPS mode where you can login manually:");
+      console.log("   1. Deploy on a VPS instead of Railway/Cloud");
+      console.log("   2. Set USE_EXTERNAL_CHROME=true");
+      console.log("   3. Login manually using ./login_chrome.sh");
+      console.log("   4. The bot will use your existing Chrome session");
     }
     
     // Return instead of throwing so bot continues

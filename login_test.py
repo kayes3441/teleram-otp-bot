@@ -77,12 +77,30 @@ if not driver:
 try:
     # Navigate
     print(f"🌐 Navigating to: {URL}")
-    driver.get(URL)
-    time.sleep(3)
-    print(f"✅ Page loaded\n")
+    current_url = driver.current_url
+    print(f"   Current URL before navigation: {current_url}")
+    
+    # If already on the page, refresh it
+    if URL in current_url or "login" in current_url:
+        print("   Already on login page, refreshing...")
+        driver.refresh()
+    else:
+        driver.get(URL)
+    
+    time.sleep(5)  # Wait longer for page to load
+    print(f"✅ Page loaded: {driver.current_url}\n")
+    
+    # Debug: Check page source
+    try:
+        page_source = driver.page_source
+        has_username = "name=\"username\"" in page_source or "name='username'" in page_source
+        has_password = "name=\"password\"" in page_source or "name='password'" in page_source
+        print(f"🔍 Page source check - Has username field: {has_username}, Has password field: {has_password}")
+    except:
+        pass
     
     # Wait for page to load
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 20)  # Increased timeout
     
     # Debug: Check what's on the page
     print("🔍 Checking page structure...")
@@ -141,34 +159,54 @@ try:
         except Exception as e:
             print(f"   Debug error: {e}")
     
-    # Fill username - try both ID and NAME
+    # Fill username - try NAME first (since HTML shows name="username")
     print("📝 Filling username...")
     username_input = None
     try:
-        username_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
+        # Try NAME first (as shown in HTML)
+        username_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
     except:
         try:
-            username_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+            # Try ID
+            username_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
         except:
-            print("❌ Username field not found (tried ID and NAME)")
-            raise
+            try:
+                # Try CSS selector
+                username_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='username']")))
+            except:
+                try:
+                    # Try class
+                    username_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input.input100[type='text']")))
+                except:
+                    print("❌ Username field not found (tried NAME, ID, CSS)")
+                    raise
     
     username_input.clear()
     username_input.send_keys(USERNAME)
     print("✅ Username filled\n")
     time.sleep(0.5)
     
-    # Fill password - try both ID and NAME
+    # Fill password - try NAME first
     print("📝 Filling password...")
     password_input = None
     try:
-        password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
+        # Try NAME first
+        password_input = wait.until(EC.presence_of_element_located((By.NAME, "password")))
     except:
         try:
-            password_input = wait.until(EC.presence_of_element_located((By.NAME, "password")))
+            # Try ID
+            password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
         except:
-            print("❌ Password field not found (tried ID and NAME)")
-            raise
+            try:
+                # Try CSS selector
+                password_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='password']")))
+            except:
+                try:
+                    # Try type=password
+                    password_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='password']")))
+                except:
+                    print("❌ Password field not found (tried NAME, ID, CSS)")
+                    raise
     
     password_input.clear()
     password_input.send_keys(PASSWORD)

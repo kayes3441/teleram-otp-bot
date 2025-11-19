@@ -84,24 +84,62 @@ try:
     # Wait for page to load
     wait = WebDriverWait(driver, 10)
     
+    # Debug: Check what's on the page
+    print("🔍 Checking page structure...")
+    try:
+        # Check for iframes
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        print(f"   Found {len(iframes)} iframe(s)")
+        for i, iframe in enumerate(iframes):
+            iframe_id = iframe.get_attribute("id")
+            iframe_name = iframe.get_attribute("name")
+            iframe_src = iframe.get_attribute("src")
+            print(f"   Iframe {i+1}: id='{iframe_id}', name='{iframe_name}', src='{iframe_src}'")
+        
+        # Check for form elements in main page
+        username_by_id = driver.find_elements(By.ID, "username")
+        username_by_name = driver.find_elements(By.NAME, "username")
+        password_by_id = driver.find_elements(By.ID, "password")
+        password_by_name = driver.find_elements(By.NAME, "password")
+        print(f"   Main page - Username: ID={len(username_by_id)}, NAME={len(username_by_name)}")
+        print(f"   Main page - Password: ID={len(password_by_id)}, NAME={len(password_by_name)}")
+    except Exception as e:
+        print(f"   Debug error: {e}")
+    
     # Switch to iframe first (very important!)
-    print("🖼️ Switching to iframe...")
+    print("\n🖼️ Switching to iframe...")
+    iframe_switched = False
     try:
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "myframemenu")))
         print("✅ Switched to iframe 'myframemenu'\n")
-        time.sleep(1)
+        iframe_switched = True
+        time.sleep(2)
     except:
         print("⚠️ Iframe 'myframemenu' not found, trying first iframe...")
         try:
             iframes = driver.find_elements(By.TAG_NAME, "iframe")
             if iframes:
                 driver.switch_to.frame(iframes[0])
-                print("✅ Switched to first iframe\n")
-                time.sleep(1)
+                print(f"✅ Switched to first iframe (id='{iframes[0].get_attribute('id')}', name='{iframes[0].get_attribute('name')}')\n")
+                iframe_switched = True
+                time.sleep(2)
             else:
                 print("⚠️ No iframes found, staying on main page\n")
         except Exception as e:
             print(f"⚠️ Could not switch to iframe: {e}\n")
+    
+    # Debug: Check elements after iframe switch
+    if iframe_switched:
+        print("🔍 Checking elements inside iframe...")
+        try:
+            username_by_id = driver.find_elements(By.ID, "username")
+            username_by_name = driver.find_elements(By.NAME, "username")
+            password_by_id = driver.find_elements(By.ID, "password")
+            password_by_name = driver.find_elements(By.NAME, "password")
+            print(f"   Inside iframe - Username: ID={len(username_by_id)}, NAME={len(username_by_name)}")
+            print(f"   Inside iframe - Password: ID={len(password_by_id)}, NAME={len(password_by_name)}")
+        except Exception as e:
+            print(f"   Debug error: {e}")
     
     # Fill username - try both ID and NAME
     print("📝 Filling username...")

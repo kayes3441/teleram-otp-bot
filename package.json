@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
-    "start": "node telegramNumberBot.js"
+    "start": "node telegramNumberBot.js",
+    "login": "node login_and_save_cookies.js"
   },
   "keywords": [],
   "author": "",

@@ -24,6 +24,7 @@ const NUMBERS_FILE = path.join(__dirname, "numbers.txt");
 const COUNTRIES_FILE = path.join(__dirname, "countries.json");
 const USERS_FILE = path.join(__dirname, "users.json");
 const OUTPUT_FILE = path.join(__dirname, "sms_cdr_stats.txt");
+const COOKIES_FILE = path.join(__dirname, "cookies.json"); // For session persistence
 
 // Server Configuration
 const PORT = process.env.PORT || 8810;
@@ -1912,6 +1913,20 @@ async function startScraper() {
         }
       });
       
+      // Load saved cookies if they exist (for session persistence)
+      try {
+        if (fs.existsSync(COOKIES_FILE)) {
+          console.log("🍪 Loading saved cookies for session persistence...");
+          const cookies = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+          if (cookies && cookies.length > 0) {
+            await targetPage.setCookie(...cookies);
+            console.log(`✅ Loaded ${cookies.length} saved cookie(s)`);
+          }
+        }
+      } catch (cookieError) {
+        console.log("⚠️ Could not load saved cookies:", cookieError.message);
+      }
+      
       // Check if already logged in by navigating to target URL first
       console.log("Checking if already logged in...");
       let alreadyLoggedIn = false;
@@ -1947,10 +1962,19 @@ async function startScraper() {
         
         console.log(`Server response - URL: ${currentUrl}, Title: ${pageContent.title}`);
         
-        // Check if we're on the SMS stats page (logged in) or login page (not logged in)
-        if (currentUrl.includes('/SMSCDRStats') && !pageContent.hasLoginForm) {
+        // Check if we're on the SMS stats/reports page (logged in) or login page (not logged in)
+        if ((currentUrl.includes('/SMSCDRStats') || currentUrl.includes('/SMSCDRReports')) && !pageContent.hasLoginForm) {
           console.log("✅ Already logged in! Skipping login process.");
           alreadyLoggedIn = true;
+          
+          // Save cookies for future use
+          try {
+            const cookies = await targetPage.cookies();
+            fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2));
+            console.log(`🍪 Saved ${cookies.length} cookie(s) for session persistence`);
+          } catch (saveError) {
+            console.log("⚠️ Could not save cookies:", saveError.message);
+          }
         } else if (currentUrl.includes('/login') || currentUrl.includes('/ints/login')) {
           console.log("⚠️ Not logged in. Redirected to login page.");
           console.log("Current URL:", currentUrl);
@@ -2525,6 +2549,16 @@ async function startScraper() {
               if (!currentUrl.includes('/login') && !currentUrl.includes('/ints/login')) {
                 console.log("✅ Login successful!");
                 loginSuccess = true;
+                
+                // Save cookies for session persistence
+                try {
+                  const cookies = await targetPage.cookies();
+                  fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2));
+                  console.log(`🍪 Saved ${cookies.length} cookie(s) for session persistence`);
+                } catch (saveError) {
+                  console.log("⚠️ Could not save cookies:", saveError.message);
+                }
+                
                 break;
               } else {
                 console.log(`Login attempt ${attempt} failed - still on login page`);

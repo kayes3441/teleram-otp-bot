@@ -241,6 +241,18 @@ try:
     if "/login" not in current_url and "/ints/login" not in current_url:
         print("✅ Login successful! Not on login page anymore.")
         print(f"✅ Redirected to: {current_url}\n")
+        
+        # Save cookies for session persistence
+        print("🍪 Saving cookies for session persistence...")
+        try:
+            import json
+            cookies = driver.get_cookies()
+            with open('cookies.json', 'w') as f:
+                json.dump(cookies, f, indent=2)
+            print(f"✅ Saved {len(cookies)} cookie(s) to cookies.json")
+            print("💡 The bot can now use these cookies to stay logged in!\n")
+        except Exception as cookie_error:
+            print(f"⚠️ Could not save cookies: {cookie_error}\n")
     else:
         print("⚠️ Still on login page - login may have failed")
         print("   Check the page for error messages\n")

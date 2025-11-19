@@ -89,6 +89,70 @@ TELEGRAM_BOT_TOKEN=your-bot-token-here
 - `PORT=8810` - Port for health check endpoint
 - Replace `your-bot-token-here` with your actual Telegram bot token
 
+---
+
+## Step 3.5: Login Once and Save Cookies (Recommended)
+
+### Option A: Using Railway CLI (Recommended)
+
+1. **Install Railway CLI:**
+   ```bash
+   npm i -g @railway/cli
+   ```
+
+2. **Login to Railway:**
+   ```bash
+   railway login
+   ```
+
+3. **Link to your project:**
+   ```bash
+   railway link
+   ```
+
+4. **Run login script in Railway:**
+   ```bash
+   railway run npm run login
+   ```
+   
+   This will:
+   - Login to SMS portal
+   - Save cookies to `cookies.json` in Railway
+   - Keep session active
+
+5. **Start the bot:**
+   ```bash
+   railway up
+   ```
+   
+   Or the bot will auto-start after deployment.
+
+### Option B: Using Railway Dashboard (One-Time Setup)
+
+1. **Go to Railway Dashboard** → Your Service → **Settings**
+
+2. **Add a one-time command:**
+   - Go to **"Deploy"** tab
+   - Under **"Start Command"**, temporarily change to:
+     ```
+     npm run login && npm start
+     ```
+   - Save and redeploy
+   - After first successful login, change back to:
+     ```
+     npm start
+     ```
+
+### Option C: Auto-Login (Default)
+
+The bot will automatically login on first run and save cookies. No manual step needed!
+
+**Workflow:**
+1. Bot starts → Checks for saved cookies
+2. If no cookies → Auto-logins → Saves cookies
+3. If cookies exist → Loads cookies → Uses existing session
+4. If cookies expired → Auto-logins again → Saves new cookies
+
 ### 3.3 Variable Details
 
 | Variable | Value | Description |
@@ -102,7 +166,38 @@ TELEGRAM_BOT_TOKEN=your-bot-token-here
 
 ---
 
-## Step 4: Verify Deployment
+---
+
+## Step 4: Login and Save Session (First Time Only)
+
+### Quick Method: Run Login Script
+
+**Using Railway CLI:**
+```bash
+# Install Railway CLI (if not installed)
+npm i -g @railway/cli
+
+# Login to Railway
+railway login
+
+# Link to your project
+railway link
+
+# Run login script (logs in and saves cookies)
+railway run npm run login
+
+# Start the bot
+railway up
+```
+
+**Or let the bot auto-login:**
+- The bot will automatically login on first run
+- Cookies will be saved automatically
+- No manual step needed!
+
+---
+
+## Step 5: Verify Deployment
 
 ### 4.1 Check Build Logs
 

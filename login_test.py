@@ -41,21 +41,30 @@ options.add_argument('--disable-gpu')
 options.add_argument('--disable-software-rasterizer')
 options.add_argument('--window-size=1920,1080')
 
-# Use webdriver-manager if available, otherwise use system ChromeDriver
-if USE_WEBDRIVER_MANAGER:
-    print("   Using webdriver-manager (automatic ChromeDriver)...")
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-else:
-    print("   Using system ChromeDriver...")
-    try:
-        driver = webdriver.Chrome(options=options)
-    except Exception as e:
+# Try system ChromeDriver first (more reliable on server)
+print("   Using system ChromeDriver...")
+try:
+    driver = webdriver.Chrome(options=options)
+except Exception as e:
+    print(f"⚠️ System ChromeDriver failed: {e}")
+    print("   Trying webdriver-manager...")
+    if USE_WEBDRIVER_MANAGER:
+        try:
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            print("   ✅ Using webdriver-manager ChromeDriver")
+        except Exception as e2:
+            print(f"❌ Error: {e2}")
+            print("\n💡 Solutions:")
+            print("   1. Check ChromeDriver: chromedriver --version")
+            print("   2. Install ChromeDriver: apt install chromium-chromedriver")
+            print("   3. Or download manually from: https://chromedriver.chromium.org/")
+            exit(1)
+    else:
         print(f"❌ Error: {e}")
         print("\n💡 Solutions:")
-        print("   1. Install ChromeDriver: brew install chromedriver")
-        print("   2. Or install webdriver-manager: pip install webdriver-manager")
-        print("   3. Or download ChromeDriver manually from: https://chromedriver.chromium.org/")
+        print("   1. Install ChromeDriver: chromedriver --version")
+        print("   2. Install webdriver-manager: pip install webdriver-manager")
         exit(1)
 
 print("✅ Chrome launched\n")

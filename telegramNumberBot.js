@@ -1829,6 +1829,9 @@ async function startScraper() {
       }
     }
     
+    // Helper function for delay (replaces deprecated waitForTimeout)
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
     // If no existing page found, create a new one
     if (!targetPage) {
       console.log("Opening new page...");
@@ -1837,8 +1840,17 @@ async function startScraper() {
       // Set user agent to avoid detection
       await targetPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Disable request blocking
-      await targetPage.setRequestInterception(false);
+      // Enable request interception to allow all requests (prevents ERR_BLOCKED_BY_CLIENT)
+      await targetPage.setRequestInterception(true);
+      targetPage.on('request', (request) => {
+        // Allow all requests - don't block anything
+        request.continue();
+      });
+      
+      // Also handle request failures
+      targetPage.on('requestfailed', (request) => {
+        console.log(`Request failed: ${request.url()} - ${request.failure()?.errorText}`);
+      });
       
       // If not using external Chrome, we need to login
       if (!USE_EXTERNAL_CHROME) {
@@ -1856,7 +1868,7 @@ async function startScraper() {
               });
               
               // Wait a bit for page to fully load
-              await targetPage.waitForTimeout(2000);
+              await delay(2000);
               
               // Solve math CAPTCHA if present
               const mathAnswer = await targetPage.evaluate(() => {
@@ -1967,7 +1979,7 @@ async function startScraper() {
                 
                 if (answerFilled) {
                   console.log(`✅ Math CAPTCHA answer filled: ${mathAnswer}`);
-                  await targetPage.waitForTimeout(500); // Wait a bit after filling
+                  await delay(500); // Wait a bit after filling
                 } else {
                   console.log(`⚠️ Could not find answer field, but answer is: ${mathAnswer}`);
                 }
@@ -2046,8 +2058,8 @@ async function startScraper() {
               
               // Wait for navigation
               await Promise.race([
-                targetPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }),
-                targetPage.waitForTimeout(5000)
+                targetPage.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => null),
+                delay(5000)
               ]);
               
               // Check if we're logged in (not on login page anymore)
@@ -2062,7 +2074,7 @@ async function startScraper() {
             } catch (attemptError) {
               console.log(`Login attempt ${attempt} error:`, attemptError.message);
               if (attempt < 3) {
-                await targetPage.waitForTimeout(2000);
+                await delay(2000);
               }
             }
           }
@@ -2083,7 +2095,7 @@ async function startScraper() {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      await targetPage.waitForTimeout(2000); // Wait for page to load
+      await delay(2000); // Wait for page to load
       console.log("✅ Navigated to SMS stats page");
     }
 

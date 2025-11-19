@@ -33,13 +33,10 @@ try:
     urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
     print("   Using existing Chrome debug service...")
     options.add_experimental_option("debuggerAddress", "localhost:9222")
-    driver = webdriver.Chrome(options=options)
-    print("✅ Connected to existing Chrome\n")
+# Uncomment if you want headless mode
+# options.add_argument('--headless')
 except Exception as e:
     # Launch new Chrome (headless for server)
-    print("   Chrome debug service not available, launching new Chrome...")
-    # Use headless mode with stability options for Ubuntu 24.04
-    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
@@ -87,17 +84,54 @@ try:
     # Wait for page to load
     wait = WebDriverWait(driver, 10)
     
-    # Fill username
+    # Switch to iframe first (very important!)
+    print("🖼️ Switching to iframe...")
+    try:
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "myframemenu")))
+        print("✅ Switched to iframe 'myframemenu'\n")
+        time.sleep(1)
+    except:
+        print("⚠️ Iframe 'myframemenu' not found, trying first iframe...")
+        try:
+            iframes = driver.find_elements(By.TAG_NAME, "iframe")
+            if iframes:
+                driver.switch_to.frame(iframes[0])
+                print("✅ Switched to first iframe\n")
+                time.sleep(1)
+            else:
+                print("⚠️ No iframes found, staying on main page\n")
+        except Exception as e:
+            print(f"⚠️ Could not switch to iframe: {e}\n")
+    
+    # Fill username - try both ID and NAME
     print("📝 Filling username...")
-    username_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
+    username_input = None
+    try:
+        username_input = wait.until(EC.presence_of_element_located((By.ID, "username")))
+    except:
+        try:
+            username_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        except:
+            print("❌ Username field not found (tried ID and NAME)")
+            raise
+    
     username_input.clear()
     username_input.send_keys(USERNAME)
     print("✅ Username filled\n")
     time.sleep(0.5)
     
-    # Fill password
+    # Fill password - try both ID and NAME
     print("📝 Filling password...")
-    password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
+    password_input = None
+    try:
+        password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
+    except:
+        try:
+            password_input = wait.until(EC.presence_of_element_located((By.NAME, "password")))
+        except:
+            print("❌ Password field not found (tried ID and NAME)")
+            raise
+    
     password_input.clear()
     password_input.send_keys(PASSWORD)
     print("✅ Password filled\n")
@@ -105,6 +139,7 @@ try:
     
     # Solve CAPTCHA
     print("🔢 Solving CAPTCHA...")
+    captcha_result = None
     try:
         body_text = driver.find_element(By.TAG_NAME, "body").text
         math_match = re.search(r'What is (\d+)\s*([+\-*])\s*(\d+)\s*=\s*\?', body_text)
@@ -113,17 +148,17 @@ try:
             num2 = int(math_match.group(3))
             op = math_match.group(2)
             if op == '+':
-                answer = num1 + num2
+                captcha_result = num1 + num2
             elif op == '-':
-                answer = num1 - num2
+                captcha_result = num1 - num2
             else:
-                answer = num1 * num2
-            print(f"   Found: {num1} {op} {num2} = {answer}")
+                captcha_result = num1 * num2
+            print(f"   Found: {num1} {op} {num2} = {captcha_result}")
             
             captcha_input = wait.until(EC.presence_of_element_located((By.NAME, "capt")))
             captcha_input.clear()
-            captcha_input.send_keys(str(answer))
-            print(f"✅ CAPTCHA filled: {answer}\n")
+            captcha_input.send_keys(str(captcha_result))
+            print(f"✅ CAPTCHA filled: {captcha_result}\n")
             time.sleep(0.5)
     except Exception as e:
         print(f"⚠️ CAPTCHA not found: {e}\n")
@@ -136,7 +171,7 @@ try:
         print("✅ Login clicked\n")
     except Exception as e:
         print(f"⚠️ Click failed: {e}, trying Enter...")
-        password_field.send_keys("\n")
+        password_input.send_keys("\n")
     
     # Wait
     print("⏳ Waiting...")

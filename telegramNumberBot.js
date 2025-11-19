@@ -1187,7 +1187,7 @@ bot.on("callback_query", async (ctx) => {
         // Create message with number
         let message = `\n**👑${BOT_NAME}**\n\n📱 Your Number:               \n\n`;
         message += `1️⃣ \`${number}\`\n\n`;
-        message += `\n🔑 OTP Code: Will appear here ✅\n\n⚠️ If OTP doesn't arrive, click OTP Group below.\n\n⏳ Waiting time: Max 50 seconds\n✨ Please be patient!\n\n*Dev by JobaerAfroz*`;
+        message += `\n🔑 OTP Code: Will appear here ✅\n\n⚠️ If OTP doesn't arrive, click OTP Group below.\n\n⏳ Waiting time: Max 50 seconds\n✨ Please be patient!`;
 
         await ctx.reply(message, {
           parse_mode: "Markdown",

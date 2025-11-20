@@ -2798,11 +2798,21 @@ async function startScraper() {
           let existingData = "";
           try {
             existingData = await fs.readFile(OUTPUT_FILE, "utf8");
+            // Protection: Never clear existing data, only prepend
+            if (!existingData || existingData.trim().length === 0) {
+              console.log("⚠️ Warning: Existing file is empty, but continuing to prepend new data.");
+            }
           } catch (error) {
             console.log("No existing file, creating new one.");
           }
+          // Protection: Always prepend, never overwrite with empty data
           const updatedData =
             dataToPrepend + (existingData ? "\n" + existingData : "");
+          // Double-check: Don't write if we're about to lose existing data
+          if (existingData && existingData.trim().length > 0 && updatedData.length < existingData.length) {
+            console.error("⚠️ ERROR: Attempted to write less data than existing! Aborting write to prevent data loss.");
+            return;
+          }
           await fs.writeFile(OUTPUT_FILE, updatedData);
           console.log(
             `Prepended ${newRows.length} new rows to ${OUTPUT_FILE} at ${timestamp}`

@@ -30,11 +30,50 @@ options = Options()
 driver = None
 try:
     import urllib.request
+    import json as json_lib
     urllib.request.urlopen('http://localhost:9222/json/version', timeout=2)
     print("   Using existing Chrome debug service...")
-    options.add_experimental_option("debuggerAddress", "localhost:9222")
-    driver = webdriver.Chrome(options=options)
-    print("✅ Connected to existing Chrome\n")
+    
+    # Get list of all tabs
+    try:
+        tabs_response = urllib.request.urlopen('http://localhost:9222/json', timeout=2)
+        tabs_data = json_lib.loads(tabs_response.read().decode())
+        print(f"   Found {len(tabs_data)} open tab(s)")
+        
+        # Find a tab with the login page or use the first one
+        target_tab = None
+        for tab in tabs_data:
+            if URL in tab.get('url', '') or 'login' in tab.get('url', '').lower():
+                target_tab = tab
+                print(f"   Found login page tab: {tab.get('url', '')}")
+                break
+        
+        if not target_tab and tabs_data:
+            target_tab = tabs_data[0]
+            print(f"   Using first tab: {target_tab.get('url', '')}")
+        
+        # Connect to Chrome
+        options.add_experimental_option("debuggerAddress", "localhost:9222")
+        driver = webdriver.Chrome(options=options)
+        
+        # Switch to the correct tab if we found one
+        if target_tab:
+            try:
+                # Get all window handles
+                handles = driver.window_handles
+                if handles:
+                    # Switch to the first handle (usually the active one)
+                    driver.switch_to.window(handles[0])
+                    print(f"   Switched to tab: {driver.current_url}")
+            except:
+                pass
+        
+        print("✅ Connected to existing Chrome\n")
+    except Exception as tab_error:
+        # Fallback: just connect without tab switching
+        options.add_experimental_option("debuggerAddress", "localhost:9222")
+        driver = webdriver.Chrome(options=options)
+        print("✅ Connected to existing Chrome (tab check skipped)\n")
 except Exception as e:
     # Launch new Chrome (headless for server)
     options.add_argument('--no-sandbox')
@@ -89,9 +128,13 @@ try:
     current_url = driver.current_url
     print(f"   Current URL before navigation: {current_url}")
     
-    # Always navigate fresh to ensure clean state
-    print("   Navigating to login page...")
-    driver.get(URL)
+    # If we're already on the login page, refresh it
+    if URL in current_url or ("login" in current_url.lower() and "185.2.83.39" in current_url):
+        print("   Already on login page, refreshing...")
+        driver.refresh()
+    else:
+        print("   Navigating to login page...")
+        driver.get(URL)
     
     # Switch back to default content after navigation
     try:
